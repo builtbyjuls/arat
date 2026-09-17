@@ -181,6 +181,12 @@ internals are never projected.
 Validation errors include field-level violations. Internal exception names,
 SQL text, provider-private data, and stack traces are never returned.
 
+Generic HTTP boundary failures use the codes `MALFORMED_REQUEST`,
+`UNSUPPORTED_MEDIA_TYPE`, `METHOD_NOT_ALLOWED`, `ROUTE_NOT_FOUND`,
+`VALIDATION_FAILED`, `NOT_ACCEPTABLE`, and `INTERNAL_ERROR`. Their `detail` and validation
+messages are safe static text. Validation violations are objects with `field`
+and `message`, sorted by field and then message.
+
 ## Group APIs
 
 ### Create a group
