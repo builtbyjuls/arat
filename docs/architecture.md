@@ -89,7 +89,7 @@ module-name/
 
 Controllers translate HTTP input and authentication context into application commands. They do not contain business rules. Persistence rows are not returned directly from the API.
 
-An interface is introduced only at a real boundary, such as time, identity, queue delivery, or email delivery. Internal classes do not receive an interface solely for test mocking.
+An interface is introduced only at a real boundary, such as time, identity, queue delivery, or email delivery. The identity API is an interface even with one initial adapter because business modules must depend on an authenticated actor contract, not on the development or future production authentication mechanism. Internal classes do not receive an interface solely for test mocking.
 
 ### 4.2 Persistence approach
 
