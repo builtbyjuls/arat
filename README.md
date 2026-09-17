@@ -197,7 +197,7 @@ transaction and locking behavior is part of the product.
 | --- | --- |
 | Product and market framing | Documented |
 | Architecture baseline | Documented |
-| Application foundation | Not started |
+| Application foundation | Bootstrapped |
 | Database schema and migrations | Not started |
 | Planning and marketplace workflows | Not started |
 | Billing simulation | Not started |
@@ -207,15 +207,15 @@ transaction and locking behavior is part of the product.
 No benchmark results are published because no reproducible benchmark has been
 run.
 
-## Planned local workflow
+## Local workflow
 
-These are target commands. They become valid during the foundation milestone:
+The wrapper is the normal build entry point. With Java 21 installed, these
+commands build and run the application:
 
 ~~~bash
-docker compose up -d
-./mvnw verify
+./mvnw clean verify
 ./mvnw spring-boot:run
 ~~~
 
-The application is not runnable yet. Foundation work will make these commands
-executable before any release is tagged.
+Docker Compose remains planned for the complete local environment. The
+application currently starts without external services.
