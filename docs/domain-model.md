@@ -141,28 +141,27 @@ require loading an entire object graph for every command.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> INVITED
-    INVITED --> ACTIVE: invitation accepted
-    INVITED --> EXPIRED: invitation deadline passes
-    INVITED --> REVOKED: organizer revokes invitation
+    [*] --> ACTIVE: creator or accepted invitation
     ACTIVE --> LEFT: member leaves
     ACTIVE --> REMOVED: organizer removes member
-    EXPIRED --> [*]
-    REVOKED --> [*]
+    LEFT --> ACTIVE: accepts new invitation as member
+    REMOVED --> ACTIVE: accepts new invitation as member
     LEFT --> [*]
     REMOVED --> [*]
 ```
 
-Only `ACTIVE` membership grants group access. An invite token is stored as a
-digest, expires, and can be accepted only once. The final active organizer
-cannot leave or be removed until organizer authority is transferred or the
-group is closed.
+Only `ACTIVE` membership grants group access. Invitations are separate records,
+with `PENDING`, `EXPIRED`, `REVOKED`, and `CONSUMED` states, and do not grant
+access. An active member cannot receive an invitation. A former member can
+accept a new invitation and reactivate only as `MEMBER`. The final active
+organizer cannot leave or be removed until organizer authority is transferred
+or the group is closed.
 
 ### Plan
 
 ```mermaid
 stateDiagram-v2
-    [*] --> DRAFT
+    [*] --> COLLABORATING: M1 public creation
     DRAFT --> COLLABORATING: planning starts
     COLLABORATING --> OPEN_FOR_OFFERS: request published
     OPEN_FOR_OFFERS --> OPEN_FOR_OFFERS: new request version published
@@ -387,6 +386,31 @@ Commands that depend on current group authority take the same lock before
 checking membership, so removal or organizer transfer cannot invalidate an
 in-flight authorization decision.
 
+### `group_invitation`
+
+Important fields:
+
+- `id`, `group_id`, and `invitee_account_id`
+- `state`: `PENDING`, `EXPIRED`, `REVOKED`, or `CONSUMED`
+- `expires_at`, `created_at`, `consumed_at`, and `revoked_at`
+- `key_id`, 32-byte `nonce`, and SHA-256 `token_digest`
+
+The raw token is never stored. Creation generates a 32-byte random nonce and
+uses the active configured HMAC key to derive 32 raw bytes with HMAC-SHA-256.
+The input is UTF-8 text containing exactly these newline-separated fields:
+`arat-invite:v1`, lowercase canonical invitation UUID, lowercase canonical
+group UUID, lowercase canonical invitee-account UUID, and unpadded Base64url
+nonce. The derived token is unpadded Base64url; lookup hashes its 32 raw HMAC
+bytes, not encoded text. The record persists the key ID, nonce, and digest.
+
+Configuration has an active key ID and a map of Base64-encoded keys of at least
+32 bytes. Local and test profiles use an explicit fake key. Every other profile
+fails startup if the key is absent. Old configured keys remain available until
+their invitations and idempotency records can no longer replay. A partial unique
+constraint permits at most one `PENDING` invitation for `(group_id,
+invitee_account_id)`; creation locks the group and first marks an effectively
+expired pending record `EXPIRED`.
+
 ### `plan`
 
 Important fields:
@@ -406,6 +430,9 @@ such as publication and selection. Those commands compare the supplied plan
 ETag while holding the plan lock and still use atomic state predicates and
 database constraints; the version field is not their only guard.
 
+M1 public creation sets `COLLABORATING`; `DRAFT` is reserved internal state and
+is not an M1 create result. Requirement replacement advances this version.
+
 ### `plan_preference`
 
 One current aggregate row exists per plan and member. Important fields include:
@@ -413,6 +440,7 @@ One current aggregate row exists per plan and member. Important fields include:
 - `plan_id`
 - `account_id`
 - Structured availability windows
+- `basis_plan_version`
 - Attendance intent: `INTERESTED`, `AVAILABLE`, `JOINING`, or `NOT_JOINING`
 - Guest count
 - Budget ceiling in integer centavos
@@ -422,25 +450,32 @@ One current aggregate row exists per plan and member. Important fields include:
 
 Unique `(plan_id, account_id)` makes the HTTP resource and ETag unambiguous.
 The first write uses a create precondition; replacements compare and increment
-`version`. Preferences may change while planning remains open. They are never
-treated as payments or enforceable commitments.
+`version`. A preference is current only when `basis_plan_version` equals the
+current plan version. It preserves the originally submitted basis when a later
+requirement replacement makes it stale. Preferences may change while planning
+remains open. They are never treated as payments or enforceable commitments.
 
 ### `requirement_draft`
 
 Contains mutable organizer inputs:
 
 - `category`
-- `area_id` and maximum travel radius
-- Start and end timestamps with named time zone
+- Candidate-window rows with stable UUIDs and retirement state
+- Area code and maximum travel radius
+- IANA time zone
 - Minimum and maximum headcount
-- Budget amount in integer centavos and currency `PHP`
+- Budget range in integer centavos and currency `PHP`
+- Ordered unique must-haves
 - Structured category attributes
 - Provider-safe notes
 - Proposed offer deadline
 - `version`
 
-The application validates `start_at < end_at`, positive headcount, coherent
-headcount bounds, nonnegative budget, and deadlines ordered before the outing.
+The application validates the public M1 limits in the
+[API Contract](api-contract.md#milestone-1-collaboration-contract). Removed
+candidate windows are retired rather than deleted, preserving explainable
+preference references. Integer minor units are persistence-only; public money
+uses exact two-decimal PHP strings.
 
 ### `published_request`
 
@@ -657,7 +692,7 @@ Important fields:
 - `idempotency_key`
 - `request_fingerprint`
 - `resource_id`
-- Serialized response status and body
+- Serialized response status, bounded replay body, and allowlisted headers
 - `created_at`
 - `expires_at`
 
@@ -667,9 +702,18 @@ Unique key:
 (actor_id, operation, idempotency_key)
 ```
 
-Reusing a key with a different fingerprint is a conflict, not a replay.
-Selection, confirmation, publication, offer submission, and cancellation
-commands require an idempotency key.
+Replay records retain at most 16 KB of state for seven days and at most 2 KB of
+the allowlisted `ETag` and `Location` headers. Sensitive fields are not stored:
+an invitation-create replay reconstructs its token from the retained identity,
+key ID, and nonce. Reusing a key with a different fingerprint is a conflict,
+not a replay. The M1 command set and replay ordering are defined in the
+[API Contract](api-contract.md#headers-retries-and-errors).
+
+### `audit_event`
+
+Audit is a small shared infrastructure component, not a deployable service.
+Rows are append-only and retain safe command facts; they never contain raw
+invitation tokens or private preference notes.
 
 ## Concurrency boundaries
 

@@ -88,6 +88,11 @@ Foreign keys must also prove that:
 - A match references an offer whose request belongs to the same plan. If that relationship cannot be expressed by one foreign key, redundant keys plus composite unique constraints are preferred over application-only validation.
 - A vote references a current group membership or records the membership identity needed for audit.
 - Provider staff actions reference an active provider membership at decision time.
+- A candidate window references its one owning plan. M1 replaces requirements
+  by retiring omitted window rows rather than deleting referenced rows.
+
+A partial unique index, not a check constraint, permits at most one `PENDING`
+invitation for one `(group_id, invitee_account_id)` pair.
 
 Check constraints protect local facts such as:
 
@@ -134,22 +139,52 @@ staff membership, verification state, or `eligibility_version`.
 
 ## 4. Transaction boundaries
 
-### 4.1 Create or replace a member preference
+### 4.1 M1 group membership and invitation commands
+
+Commands resolve identifiers, claim their required idempotency key, and lock the
+group root before testing active membership or organizer authority. Invitation
+creation locks that same root, marks an effectively expired pending invite
+`EXPIRED`, then relies on the pending-invite unique index before inserting. It
+does not advance the group version. Acceptance locks the group root, validates
+the token digest, invitation state, expiry, and bound account, then consumes
+the invitation and creates or reactivates membership as `MEMBER` in one
+transaction. Unknown, wrong-account, expired, revoked, and consumed tokens use
+the same `INVITATION_UNAVAILABLE` outcome.
+
+Leave, removal, acceptance, and organizer transfer change membership or roles
+and advance the group version once. Transfer promotes the target and demotes
+only its caller; it does not alter other organizers. The final-organizer check
+is made under the group lock. Exact completed idempotent replay is resolved
+before current ETag validation where the command has one.
+
+### 4.2 Create or replace a member preference
 
 Within one transaction:
 
 1. Resolve the group and plan identifiers without locking.
 2. Lock the group root and verify that the actor remains an active member.
-3. Lock the plan and verify that collaboration is still allowed.
+3. Lock the plan and verify that collaboration is still allowed and that the
+   supplied positive `basisPlanVersion` equals the current plan version.
 4. For the first write, require `If-None-Match: *` and insert one preference
    row with version 1. The unique `(plan_id, account_id)` key rejects a race.
 5. For a replacement, lock the existing preference, compare `If-Match` with
    its version, replace the preference snapshot, and increment its version.
 
-A failed precondition returns HTTP 412. Different members have separate
-preference versions; the plan version is not their edit token.
+A failed HTTP version precondition returns 412; a stale basis returns 409
+`REQUIREMENT_VERSION_CHANGED`. Different members have separate preference
+versions; the plan version is not their edit token. A preference stores the
+client-supplied basis and later plan replacement makes it stale without
+rewriting or deleting it.
 
-### 4.2 Publish a request version
+### 4.3 Replace a requirement draft
+
+Within one transaction, lock the group root, verify organizer authority, lock
+the plan, compare its `If-Match`, reject a cancelled plan, validate the full
+replacement, retain known candidate-window IDs, retire omitted IDs, and advance
+the plan version once. The transaction does not finalize or publish a provider
+request; those are Phase 2 operations.
+
+### 4.4 Publish a request version
 
 Within one transaction:
 
@@ -177,7 +212,7 @@ the provider to remain active and verified. A concurrent suspension increments
 the version, immediately making a stale recipient unusable even if its insert
 commits later.
 
-### 4.3 Submit an offer
+### 4.5 Submit an offer
 
 Within one transaction:
 
@@ -204,7 +239,7 @@ billing extension is enabled, the entitlement check and usage increment cannot
 be separated into two transactions; otherwise concurrent Free-plan offers
 could exceed the limit.
 
-### 4.4 Cast or change a vote
+### 4.6 Cast or change a vote
 
 Within one transaction:
 
@@ -221,7 +256,7 @@ Voting is advisory. It never creates a match, even if a vote reaches a
 majority. A stale or failed create precondition returns HTTP 412 rather than
 silently accepting a last-writer-wins update.
 
-### 4.5 Select an offer
+### 4.7 Select an offer
 
 Within one transaction:
 
@@ -260,7 +295,7 @@ WHERE id = :offer_id
 
 Exactly one updated row is required. Zero rows means the offer is no longer selectable.
 
-### 4.6 Provider confirmation
+### 4.8 Provider confirmation
 
 Within one transaction:
 
@@ -283,7 +318,7 @@ Within one transaction:
 
 Confirmation does not call the notification service and does not send email in the transaction.
 
-### 4.7 Confirmation timeout
+### 4.9 Confirmation timeout
 
 A scheduler may discover candidate match identifiers without holding long transactions. Each candidate is processed in its own transaction:
 
@@ -303,7 +338,7 @@ A scheduler may discover candidate match identifiers without holding long transa
 
 If confirmation already won, the timeout is a no-op. If timeout won, a late confirmation receives a stable expired response.
 
-### 4.8 Shared request close rule
+### 4.10 Shared request close rule
 
 Manual closure, request-deadline expiration, plan cancellation, confirmation,
 and the expired-deadline branch of decline, timeout, or pending-selection
@@ -404,13 +439,15 @@ The database constraint remains authoritative if a future code path accidentally
 
 ## 8. Idempotency protocol
 
-Commands with externally visible side effects require an `Idempotency-Key`, including:
-
-- Publish request
-- Submit or withdraw offer
-- Select offer
-- Confirm or decline match
-- Simulated subscription change
+M1 requires an `Idempotency-Key` for group creation, invitation creation and
+revocation, invitation acceptance, self-leave, member removal, organizer
+transfer, plan creation, and plan cancellation. Later commands retain their
+own documented requirements: requirement finalization, provider-request
+publication, closure, and cancellation; offer submission and withdrawal;
+selection; match confirmation, decline, completion, and cancellation; simulated
+subscription changes; and provider verification or restriction decisions.
+Requirement replacement and preference writes use only their required version
+preconditions.
 
 The durable idempotency record contains:
 
@@ -420,22 +457,29 @@ The durable idempotency record contains:
 - Canonical request hash
 - Processing state
 - Result resource identifier
-- Stable response status and minimal response payload
+- Stable response status, replay body, and allowlisted response headers
 - Creation and expiration timestamps
 
 Protocol:
 
-1. Insert the key in the same transaction as the command.
-2. If it already exists with the same request hash and is complete, return the stored result.
-3. If it exists with a different hash, return `409 Conflict`.
-4. If a prior transaction rolled back, its idempotency insert also rolled back and a retry can proceed.
-5. If an in-progress record is observed because of an unusual recovery path, do not execute the command independently; return retryable status or reconcile it.
+1. Canonicalize and validate the command before hashing; invite acceptance
+   hashes the token digest, never a raw token.
+2. Insert the key in the same transaction as the command.
+3. If it already exists with the same request hash and is complete, return the
+   stored result before checking a now-stale ETag.
+4. If it exists with a different hash, return `409 IDEMPOTENCY_KEY_REUSED`.
+5. If a prior transaction rolled back, its idempotency insert also rolled back and a retry can proceed.
+6. If an in-progress record is observed because of an unusual recovery path, do not execute the command independently; return retryable status or reconcile it.
 
 For an idempotent command that also carries `If-Match`, a completed same-hash
 replay returns at step 2 before evaluating the now-stale resource ETag. A new
 command evaluates its precondition under the documented domain locks.
 
-Keys are scoped by actor and operation so unrelated users cannot collide. Sensitive request bodies are not stored solely for idempotency.
+Keys are scoped by actor and operation so unrelated users cannot collide. Replay
+state is at most 16 KB, retained for seven days, and stores only `ETag` and
+`Location` headers with a 2 KB combined limit. Sensitive request bodies are not
+stored solely for idempotency; in particular, invite-create replay reconstructs
+its token rather than storing it.
 
 ## 9. Outbox and consumer idempotency
 

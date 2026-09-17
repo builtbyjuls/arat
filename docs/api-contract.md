@@ -38,51 +38,130 @@ authenticated principal plus the relevant active membership.
 
 Production identity-provider integration is out of scope.
 
-## Concurrency headers
+## Milestone 1 collaboration contract
 
-### Idempotency-Key
+This section is the authoritative planned contract for Phase 1 private group
+collaboration. It is not an implemented OpenAPI specification. Requirement
+finalization and provider publication begin in Phase 2; Phase 1 creates and
+edits a private collaboration draft only.
 
-Required for commands that may be retried and create a durable result,
-including:
+### Headers, retries, and errors
 
-- Create a group
-- Accept an invitation
-- Create a plan or finalize its requirements
-- Publish a provider request
-- Close or cancel a provider request
-- Submit or withdraw an offer
-- Select an offer
-- Confirm, decline, complete, or cancel a match
-- Start or change a simulated subscription
-- Submit or decide provider verification and apply a provider restriction
+Group, plan, and preference ETags are quoted integer versions, such as `"7"`.
+A required missing `If-Match` or `If-None-Match` returns `428
+PRECONDITION_REQUIRED`; a malformed precondition returns `400
+INVALID_PRECONDITION`; and a stale or failed valid precondition returns `412
+PRECONDITION_FAILED`. The first preference `PUT` requires `If-None-Match: *`.
+Later preference replacements require that preference's `If-Match`. Requirement
+replacement uses the plan's `If-Match`.
 
-The canonical uniqueness scope is authenticated actor, operation, and key:
-`(actor_id, operation, idempotency_key)`. The operation name already identifies
-the route semantics. Reusing a key
-with a different request fingerprint returns a conflict.
+`Idempotency-Key` is required for group creation, invitation creation and
+revocation, invitation acceptance, self-leave, member removal, organizer
+transfer, plan creation, and plan cancellation. Its scope is authenticated
+actor, operation, and key: `(actor_id, operation, idempotency_key)`.
+Requirement replacement and preference writes use only their version
+preconditions. A fingerprint hashes the canonical validated command; invite
+acceptance fingerprints the token digest, never the raw token. Records retain
+status and bounded replay state for seven days. Replay state is at most 16 KB,
+normally contains the response body, and stores only allowlisted `ETag` and
+`Location` response headers with a combined 2 KB limit. An invitation token is
+reconstructed for an exact invite-create replay and is never stored in replay
+state.
 
-The server stores the original status code and response for replay.
+An exact completed replay returns the original status, representation, ETag,
+and Location before current ETag validation. Reusing a key with different
+content returns `409 IDEMPOTENCY_KEY_REUSED` before mutation. Normal
+authentication failure remains 401 and malformed request syntax remains 400.
 
-### ETag and If-Match
+The planned M1 problem codes are:
 
-Mutable planning resources expose an ETag based on their version.
+`PRIVATE_RESOURCE_NOT_FOUND`, `FORBIDDEN_ROLE`, `FINAL_ORGANIZER_REQUIRED`,
+`INVITATION_UNAVAILABLE`, `ALREADY_MEMBER`, `PRECONDITION_REQUIRED`,
+`INVALID_PRECONDITION`, `PRECONDITION_FAILED`, `IDEMPOTENCY_KEY_REUSED`,
+`INVALID_CURSOR`, `INVALID_PLAN_STATE`, `INVITATION_ALREADY_PENDING`,
+`PREFERENCE_NOT_FOUND`, `REQUIREMENT_VERSION_CHANGED`, `ALREADY_ORGANIZER`,
+and `VALIDATION_FAILED`.
 
-Organizer commands that change shared plan requirements require If-Match.
-Each member preference has its own version, so preference edits do not consume
-the shared plan ETag even though the transaction briefly locks the plan to
-validate its current state.
+### M1 request and representation rules
 
-For a resource that does not yet exist, the first `PUT` uses
-`If-None-Match: *`. A successful create returns its first ETag. Later `PUT`
-requests use `If-Match` with that ETag. Exactly one of those preconditions is
-required for preference and vote writes.
+M1 activity categories are exactly `COURT`, `KTV`, and `GROUP_DINING`. Group
+names are 1-80 characters and descriptions are 0-500. Plan titles are 1-120
+characters. A plan has a valid IANA time zone and 1-10 candidate windows. Each
+window uses RFC 3339 instants and has `startAt` before `endAt`.
 
-The server compares a supplied version after acquiring the transaction's
-required locks. A stale `If-Match`, or `If-None-Match: *` when the resource
-already exists, returns HTTP 412. An exact retry of a completed idempotent
-command returns its stored response before current-version validation; this
-keeps a successful retry from failing merely because the original command
-advanced the version.
+Requirement requests use this shape:
+
+~~~json
+{
+  "title": "Friday badminton",
+  "category": "COURT",
+  "timeZone": "Asia/Manila",
+  "candidateWindows": [{
+    "id": "optional-retained-uuid",
+    "startAt": "2027-01-09T09:00:00Z",
+    "endAt": "2027-01-09T11:00:00Z"
+  }],
+  "area": {"code": "BGC", "radiusKm": 5},
+  "headcount": {"minimum": 4, "maximum": 10},
+  "budget": {
+    "currency": "PHP",
+    "minimumAmount": "0.00",
+    "maximumAmount": "2500.00"
+  },
+  "mustHaves": ["parking", "shower"],
+  "providerSafeNotes": "Indoor court preferred.",
+  "categoryAttributes": {"hasParking": true, "courtCount": 2}
+}
+~~~
+
+Candidate windows are `{id?, startAt, endAt}`. Creation omits `id`; responses
+assign a UUID. A replacement retains a window by sending that UUID. An unknown
+or cross-plan UUID is invalid. Removed windows are retired, rather than
+physically deleted, so old preferences remain explainable. `area.code` is 1-64
+characters and `radiusKm` is 1-100. Headcount is 1-100 and its minimum cannot
+exceed its maximum. `mustHaves` is an ordered unique array of at most 20
+strings, each 1-120 characters. `providerSafeNotes` is optional and at most
+1000 characters.
+
+Budget and personal budget amounts are public decimal strings, not minor units.
+They use plain decimal notation with exactly two fraction digits, are in PHP,
+and range from `0.00` through `1000000.00`; the boundary converts them exactly
+to integer minor units from 0 through 100000000. A budget range has minimum no
+greater than maximum.
+At most 20 category attributes are allowed. Their lower-camel-case keys are
+1-40 ASCII letters or digits and begin with a letter. Values are only Boolean,
+an integer from 0 through 1000000, or a 1-120 character string. Null, decimal,
+array, and nested-object values are invalid.
+
+A preference request contains a positive integer `basisPlanVersion`, attendance
+(`INTERESTED`, `AVAILABLE`, `JOINING`, or `NOT_JOINING`), `guestCount` from
+0-20, selected window IDs that exist on the current plan draft, optional
+personal budget, ranked
+preferences, and an optional private note. `guestCount` counts guests in
+addition to the member and is zero for `NOT_JOINING`. Ranked preferences are an
+ordered unique array of trimmed 1-80 character strings, with at most 10 items;
+array order is rank. The private note is at most 1000 characters. A personal
+PHP budget uses the same absolute money bounds and need not fit the plan budget.
+
+~~~json
+{
+  "basisPlanVersion": 7,
+  "attendance": "JOINING",
+  "guestCount": 1,
+  "selectedWindowIds": ["candidate-window-uuid"],
+  "personalBudget": {"currency": "PHP", "amount": "500.00"},
+  "rankedPreferences": ["indoor court", "parking"],
+  "privateNote": "I can bring a shuttlecock."
+}
+~~~
+
+Group detail projects group fields and active member IDs, display names, and
+roles. Plan lists are minimal summaries. Plan detail includes its requirement
+draft but not preferences, so its ETag tags that representation. The separate
+member-only plan-preferences collection includes each preference's basis version
+and whether it remains current. Own-preference reads and writes use the
+preference ETag. Tokens, invitation internals, idempotency records, and audit
+internals are never projected.
 
 ## Error envelope
 
@@ -133,7 +212,16 @@ POST /api/v1/groups/{groupId}/invites
 DELETE /api/v1/groups/{groupId}/invites/{inviteId}
 ~~~
 
-Invite tokens are returned only when created and are stored hashed.
+The create body accepts `inviteeAccountId` and optional `expiryHours`. These are
+secret, account-bound links for known local accounts. Expiry defaults to 72
+hours and cannot exceed 168 hours. An invitation grants `MEMBER`, never
+organizer. An active member cannot be invited; a former member can accept a new
+invitation and reactivate as `MEMBER`. At most one pending invitation exists for
+one group and invitee. Creation expires an effectively expired pending invite
+while holding the group lock; a still-valid pending invite is a conflict.
+
+The raw token is returned only on create. Its detailed derivation and storage
+contract is defined in the [Domain and Data Model](domain-model.md#group_membership).
 
 ### Join through an invite
 
@@ -149,6 +237,9 @@ POST /api/v1/groups/{groupId}/organizer-transfer
 If-Match: "group-version"
 ~~~
 
+Multiple active organizers are allowed. Transfer promotes an active member and
+demotes only the caller; other organizers do not change.
+
 ### Leave or remove a member
 
 ~~~http
@@ -158,7 +249,9 @@ Idempotency-Key: ...
 ~~~
 
 The final active organizer cannot leave or be removed. Removing another member
-requires organizer authority.
+requires organizer authority. Group version advances once when active
+membership or roles change, but not when an invitation is created, expires, or
+is revoked.
 
 ## Plan APIs
 
@@ -169,15 +262,9 @@ POST /api/v1/groups/{groupId}/plans
 Idempotency-Key: ...
 ~~~
 
-Core fields:
-
-- title
-- activity category
-- candidate date and time windows
-- IANA time zone
-- broad location preference
-- initial headcount range
-- optional budget range
+Any active member may create a plan. Public creation starts directly in
+`COLLABORATING`; `DRAFT` is reserved and not exposed by M1 creation. The create
+body uses the requirement shape above.
 
 ### Read or list plans
 
@@ -186,15 +273,15 @@ GET /api/v1/groups/{groupId}/plans?cursor=...
 GET /api/v1/plans/{planId}
 ~~~
 
-### Update organizer-owned requirements
+### Replace organizer-owned requirements
 
 ~~~http
-PATCH /api/v1/plans/{planId}
+PUT /api/v1/plans/{planId}/requirements
 If-Match: "plan-version"
 ~~~
 
-Material edits after publication create a new draft requirement version. They
-do not rewrite the published snapshot answered by existing offers.
+This is full replacement. Every replacement advances the plan version and makes
+older preferences stale without deleting or rewriting member input.
 
 ### Read or set a member preference
 
@@ -206,7 +293,9 @@ If-None-Match: *
 
 The first `PUT` uses `If-None-Match: *`. Replacements use
 `If-Match: "preference-version"`. Successful reads and writes return the
-current preference ETag.
+current preference ETag. Under the plan lock, `basisPlanVersion` must equal the
+current plan version or the write returns `409 REQUIREMENT_VERSION_CHANGED`; an
+accepted write stores that supplied basis.
 
 Fields may include:
 
@@ -216,6 +305,13 @@ Fields may include:
 - Maximum personal budget
 - Ranked activity or amenity preferences
 - Private note visible only to group members
+
+~~~http
+GET /api/v1/plans/{planId}/preferences
+~~~
+
+This collection is visible only to active group members and has no collection
+ETag.
 
 ### Cancel a plan
 
@@ -230,6 +326,38 @@ Cancellation is terminal for the plan. Its current request becomes
 pending match becomes `CANCELLED` atomically. A new outing attempt uses a new
 plan.
 
+### M1 command outcomes
+
+| Command | Success | Visible authorization or state errors |
+| --- | --- | --- |
+| Create group | 201 with ETag and Location | 422 validation; 409 idempotency reuse |
+| Read group | 200 with ETag | missing or inactive access: 404 private resource |
+| Create invite | 201 with Location and token | outsider: 404; active non-organizer: 403; unknown invitee or invalid expiry: 422; active invitee: 409 already member; pending invite: 409 invitation already pending |
+| Revoke invite | 204 | outsider: 404; active non-organizer: 403; missing or non-pending invite: 404 invitation unavailable |
+| Accept invite | 200 with new group ETag | every unavailable-token case: 404 invitation unavailable |
+| Leave group | 204 with new group ETag | inactive caller: 404; final organizer: 409 |
+| Remove member | 204 with new group ETag | outsider: 404; active non-organizer: 403; missing or inactive target: 404 private resource; self target: 422; final organizer: 409 |
+| Transfer organizer | 200 with new group ETag | outsider: 404; active non-organizer: 403; missing or inactive target: 404 private resource; self target: 422; organizer target: 409 already organizer; precondition errors: 428, 400, or 412 |
+| Create plan | 201 with ETag and Location | inactive access: 404; validation: 422 |
+| Read or list plans | 200; detail has ETag | inactive or wrong-group access: 404; bad cursor: 400 |
+| Replace requirements | 200 with new plan ETag | outsider: 404; active non-organizer: 403; cancelled plan: 409; precondition errors: 428, 400, or 412 |
+| Read own preference | 200 with preference ETag | outsider: 404; no preference on visible plan: 404 preference not found |
+| List plan preferences | 200 without ETag | outsider: 404 |
+| Create preference | 201 with ETag and Location | outsider: 404; cancelled plan: 409; stale basis: 409; wrong resource precondition: 428, 400, or 412 |
+| Replace preference | 200 with new ETag | outsider: 404; absent preference: 404 preference not found; cancelled plan: 409; stale basis: 409; wrong resource precondition: 428, 400, or 412 |
+| Cancel plan | 200 with new plan ETag | outsider: 404; active non-organizer: 403; stale new command: 412; already cancelled with its current ETag under a new key: 409; other precondition errors: 428 or 400 |
+
+Plan lists order by `(created_at DESC, id DESC)`, default to 20 items, allow at
+most 100, and use an opaque versioned Base64url cursor. Updates never change
+that list order. A malformed cursor returns `400 INVALID_CURSOR`.
+
+For cancellation that is not an exact completed replay, the locked plan's ETag
+is checked before plan state. Therefore a pre-cancellation ETag returns 412;
+a new key with the current cancelled-plan ETag reaches state validation and
+returns 409.
+
+## Phase 2 planning extension
+
 ### Finalize requirements
 
 ~~~http
@@ -241,7 +369,16 @@ If-Match: "plan-version"
 The response contains the calculated headcount range, compatible time windows,
 budget range, and unresolved warnings. Finalization does not publish anything.
 
-## Provider-request APIs
+### Deferred command idempotency
+
+After M1, `Idempotency-Key` is also required to finalize requirements; publish,
+close, or cancel a provider request; submit or withdraw an offer; select an
+offer; confirm, decline, complete, or cancel a match; start or change a
+simulated subscription; and submit or decide provider verification or apply a
+provider restriction. The operation still identifies route semantics within the
+actor, operation, and key scope.
+
+## Provider-request APIs (Phase 2)
 
 ### Publish a requirement
 
