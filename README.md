@@ -198,7 +198,7 @@ transaction and locking behavior is part of the product.
 | Product and market framing | Documented |
 | Architecture baseline | Documented |
 | Application foundation | Bootstrapped |
-| Database schema and migrations | Not started |
+| Database schema and migrations | PostgreSQL migration foundation in place |
 | Planning and marketplace workflows | Not started |
 | Billing simulation | Not started |
 | Concurrency evidence | Not started |
@@ -209,13 +209,27 @@ run.
 
 ## Local workflow
 
-The wrapper is the normal build entry point. With Java 21 installed, these
-commands build and run the application:
+The wrapper is the normal build entry point. Verification requires Java 21 and
+Docker because its integration test starts PostgreSQL through Testcontainers:
 
 ~~~bash
 ./mvnw clean verify
+~~~
+
+Application startup requires PostgreSQL and explicit datasource configuration.
+For a local database at `localhost:5432/arat` with the `arat` username and
+password, activate the local profile:
+
+~~~bash
+SPRING_PROFILES_ACTIVE=local ./mvnw spring-boot:run
+~~~
+
+For other environments, set `ARAT_DATABASE_URL`, `ARAT_DATABASE_USERNAME`, and
+`ARAT_DATABASE_PASSWORD` before starting the application:
+
+~~~bash
 ./mvnw spring-boot:run
 ~~~
 
 Docker Compose remains planned for the complete local environment. The
-application currently starts without external services.
+application does not start without a PostgreSQL datasource.

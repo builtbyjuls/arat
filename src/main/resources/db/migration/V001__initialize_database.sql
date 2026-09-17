@@ -1,0 +1,1 @@
+-- Database baseline. Domain schema migrations begin in later task cards.
