@@ -11,9 +11,9 @@ organizer selects one offer, and the provider confirms the match.
 
 The name comes from Filipino backslang for "tara", or "let's go."
 
-This repository is currently in the design phase. The documents describe the
-target system and the evidence required before making implementation,
-performance, or scalability claims.
+Milestone 0 provides a runnable application foundation. The documents describe
+the target system and the evidence required before making implementation,
+performance, or scalability claims beyond that foundation.
 
 ## Why this project exists
 
@@ -133,7 +133,9 @@ flowchart LR
     Notification --> Mail[Mailpit]
 ~~~
 
-Planned technology choices:
+The implemented foundation uses Java 21, Spring Boot, PostgreSQL and Flyway,
+Testcontainers, Docker Compose, Actuator, Prometheus metrics, and GitHub
+Actions verification. The following remain planned where noted:
 
 - Java 21
 - A current stable Spring Boot release selected during foundation work
@@ -141,9 +143,8 @@ Planned technology choices:
 - Spring JDBC or JdbcClient for correctness-sensitive transitions
 - Testcontainers for integration tests
 - Docker Compose for the complete local environment
-- AWS SDK for Java v2 with Floci for local SQS compatibility
-- Mailpit for local email inspection
-- Micrometer and Prometheus
+- AWS SDK for Java v2 with Floci for local SQS compatibility (planned with messaging)
+- Mailpit for local email inspection (planned with email delivery)
 - k6 for reproducible workload scenarios
 
 Redis, Kafka, Kubernetes, and microservices are not part of the initial design.
@@ -167,9 +168,11 @@ better-quality group requests.
 
 ## Local-first development
 
-Normal development and automated tests require no AWS account.
+Normal development and automated tests need Docker but no AWS account. Docker
+runs PostgreSQL for host-run application development and Testcontainers tests;
+the full Compose stack also runs the application and Prometheus.
 
-| Local component | Possible future AWS equivalent |
+| Planned local component | Possible future AWS equivalent |
 | --- | --- |
 | Spring Boot container | ECS/Fargate or another container runtime |
 | PostgreSQL container | RDS PostgreSQL or Aurora PostgreSQL |
@@ -178,8 +181,10 @@ Normal development and automated tests require no AWS account.
 | Prometheus | Managed Prometheus or selected CloudWatch metrics |
 | Local configuration | Parameter Store and Secrets Manager |
 
-Floci is intentionally limited to SQS. PostgreSQL runs directly because its
-transaction and locking behavior is part of the product.
+Floci is intentionally limited to SQS when messaging exists. It is absent from
+the M0 stack because no outbox, queue adapter, or consumer exists yet. Mailpit
+is likewise absent until email delivery exists. PostgreSQL runs directly
+because its transaction and locking behavior is part of the product.
 
 ## Documentation map
 
@@ -197,8 +202,8 @@ transaction and locking behavior is part of the product.
 | --- | --- |
 | Product and market framing | Documented |
 | Architecture baseline | Documented |
-| Application foundation | Bootstrapped |
-| Database schema and migrations | PostgreSQL migration foundation in place |
+| Application foundation | Implemented: runnable Spring Boot, local auth, health, metrics, Compose, and CI smoke checks |
+| Database schema and migrations | Implemented: Flyway baseline and PostgreSQL test foundation |
 | Planning and marketplace workflows | Not started |
 | Billing simulation | Not started |
 | Concurrency evidence | Not started |
@@ -207,24 +212,46 @@ transaction and locking behavior is part of the product.
 No benchmark results are published because no reproducible benchmark has been
 run.
 
-## Local workflow
+## Runnable local workflow
 
-The wrapper is the normal build entry point. Verification requires Java 21 and
-Docker because its integration test starts PostgreSQL through Testcontainers:
+Prerequisites are Java 21, Bash, Docker with Docker Compose v2, `curl`,
+`unzip`, `jq`, and a SHA-256 utility such as `sha256sum` or `shasum`. The
+wrapper is the normal build entry point. No AWS account, cloud credentials,
+Floci, or Mailpit is needed for M0.
+
+### Test lanes
+
+Run fast unit tests with:
+
+~~~bash
+./mvnw test
+~~~
+
+Run the normal verification lane with unit tests, PostgreSQL Testcontainers
+integration tests, architecture tests, security-profile tests, migration tests,
+and readiness tests:
 
 ~~~bash
 ./mvnw clean verify
 ~~~
 
-Application startup requires PostgreSQL and explicit datasource configuration.
-For a local database at `localhost:5432/arat` with the `arat` username and
-password, activate the local profile:
+### Host-run application
+
+Start only PostgreSQL in one terminal, then run the application on the host in
+another terminal:
 
 ~~~bash
+docker compose up --wait postgres
 SPRING_PROFILES_ACTIVE=local ./mvnw spring-boot:run
 ~~~
 
-After startup, the local-only authentication probe verifies the current actor:
+The local profile defaults to PostgreSQL at `localhost:5432/arat` with the
+fake `arat` username and password. Override `ARAT_DATABASE_URL`,
+`ARAT_DATABASE_USERNAME`, and `ARAT_DATABASE_PASSWORD` when needed.
+
+The local bearer token is deliberately fake and unsafe for production. It is
+available only in the `local` profile and identifies one fixed development
+actor:
 
 ~~~bash
 curl -H 'Authorization: Bearer arat-local-owner-token' \
@@ -232,24 +259,34 @@ curl -H 'Authorization: Bearer arat-local-owner-token' \
 ~~~
 
 The token and probe are unavailable outside the `local` profile. The `prod`
-profile cannot be combined with `local` or `compose`.
+profile cannot be combined with `local` or `compose`. Stop the host application
+with `Ctrl+C`, then stop the database with `docker compose stop postgres`.
 
-For other environments, set `ARAT_DATABASE_URL`, `ARAT_DATABASE_USERNAME`, and
-`ARAT_DATABASE_PASSWORD` before starting the application:
+### Full Compose stack
 
-~~~bash
-./mvnw spring-boot:run
-~~~
-
-Docker Compose starts the application and PostgreSQL with the same
-`postgres:18.6-alpine` image used by the integration tests:
+Start PostgreSQL, the application, and Prometheus together:
 
 ~~~bash
 docker compose up --build --wait
 ~~~
 
-The application is available at `http://127.0.0.1:8080` and PostgreSQL at
-`127.0.0.1:5432`. Both ports can be changed for isolated local runs:
+Service URLs are:
+
+- Application: `http://127.0.0.1:8080`
+- Liveness: `http://127.0.0.1:8080/actuator/health/liveness`
+- Readiness: `http://127.0.0.1:8080/actuator/health/readiness`
+- Prometheus metrics: `http://127.0.0.1:8080/actuator/prometheus`
+- Prometheus UI: `http://127.0.0.1:9090`
+- PostgreSQL: `127.0.0.1:5432`
+
+After Compose reports healthy services, verify the fake local actor:
+
+~~~bash
+curl -H 'Authorization: Bearer arat-local-owner-token' \
+  http://127.0.0.1:8080/api/v1/dev/whoami
+~~~
+
+Override ports for an isolated local run:
 
 ~~~bash
 ARAT_APP_PORT=18080 ARAT_POSTGRES_PORT=15432 docker compose up --build --wait
@@ -259,19 +296,20 @@ The Compose defaults use the deliberately fake `arat` PostgreSQL username and
 password. Override `ARAT_DATABASE_NAME`, `ARAT_DATABASE_USERNAME`, and
 `ARAT_DATABASE_PASSWORD` when needed; no local secret file is required.
 
-After Compose reports healthy services, verify the local authentication probe:
+Stop the full stack while preserving named volumes:
 
 ~~~bash
-curl -H 'Authorization: Bearer arat-local-owner-token' \
-  http://127.0.0.1:8080/api/v1/dev/whoami
+docker compose down
 ~~~
 
-`docker compose down` preserves the named PostgreSQL volume. Remove it only
-when a local database reset is intentional:
+Remove the named PostgreSQL and Prometheus volumes only when a local reset is
+intentional:
 
 ~~~bash
 docker compose down --volumes
 ~~~
+
+### Isolated smoke check
 
 To verify a clean runtime startup without touching the default Compose project
 or its volumes, run the isolated smoke check from the repository root:
