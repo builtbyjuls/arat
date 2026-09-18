@@ -272,3 +272,10 @@ when a local database reset is intentional:
 ~~~bash
 docker compose down --volumes
 ~~~
+
+To verify a clean runtime startup without touching the default Compose project
+or its volumes, run the isolated smoke check from the repository root:
+
+~~~bash
+scripts/smoke-foundation.sh
+~~~
