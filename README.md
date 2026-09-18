@@ -241,5 +241,34 @@ For other environments, set `ARAT_DATABASE_URL`, `ARAT_DATABASE_USERNAME`, and
 ./mvnw spring-boot:run
 ~~~
 
-Docker Compose remains planned for the complete local environment. The
-application does not start without a PostgreSQL datasource.
+Docker Compose starts the application and PostgreSQL with the same
+`postgres:18.6-alpine` image used by the integration tests:
+
+~~~bash
+docker compose up --build --wait
+~~~
+
+The application is available at `http://127.0.0.1:8080` and PostgreSQL at
+`127.0.0.1:5432`. Both ports can be changed for isolated local runs:
+
+~~~bash
+ARAT_APP_PORT=18080 ARAT_POSTGRES_PORT=15432 docker compose up --build --wait
+~~~
+
+The Compose defaults use the deliberately fake `arat` PostgreSQL username and
+password. Override `ARAT_DATABASE_NAME`, `ARAT_DATABASE_USERNAME`, and
+`ARAT_DATABASE_PASSWORD` when needed; no local secret file is required.
+
+After Compose reports healthy services, verify the local authentication probe:
+
+~~~bash
+curl -H 'Authorization: Bearer arat-local-owner-token' \
+  http://127.0.0.1:8080/api/v1/dev/whoami
+~~~
+
+`docker compose down` preserves the named PostgreSQL volume. Remove it only
+when a local database reset is intentional:
+
+~~~bash
+docker compose down --volumes
+~~~
