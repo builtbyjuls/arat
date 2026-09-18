@@ -4,11 +4,14 @@ import com.builtbyjuls.arat.groups.application.GroupCreationService;
 import com.builtbyjuls.arat.groups.application.GroupQueryService;
 import com.builtbyjuls.arat.groups.application.InvitationService;
 import com.builtbyjuls.arat.groups.application.MembershipExitService;
+import com.builtbyjuls.arat.groups.application.OrganizerTransferService;
 import com.builtbyjuls.arat.identity.api.CurrentActor;
 import com.builtbyjuls.arat.web.ApiProblemFactory;
 import com.builtbyjuls.arat.web.ApiProblemResponse;
 import com.builtbyjuls.arat.web.CorrelationIdFilter;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.headers.Header;
@@ -48,6 +51,7 @@ public class GroupController {
     private final GroupQueryService groupQueryService;
     private final InvitationService invitationService;
     private final MembershipExitService membershipExitService;
+    private final OrganizerTransferService organizerTransferService;
     private final ApiProblemFactory apiProblemFactory;
 
     public GroupController(
@@ -56,12 +60,14 @@ public class GroupController {
             GroupQueryService groupQueryService,
             InvitationService invitationService,
             MembershipExitService membershipExitService,
+            OrganizerTransferService organizerTransferService,
             ApiProblemFactory apiProblemFactory) {
         this.currentActor = currentActor;
         this.groupCreationService = groupCreationService;
         this.groupQueryService = groupQueryService;
         this.invitationService = invitationService;
         this.membershipExitService = membershipExitService;
+        this.organizerTransferService = organizerTransferService;
         this.apiProblemFactory = apiProblemFactory;
     }
 
@@ -252,6 +258,39 @@ public class GroupController {
         return ResponseEntity.noContent().eTag(etag).build();
     }
 
+    @PostMapping("/{groupId}/organizer-transfer")
+    @Operation(operationId = "transferGroupOrganizer", summary = "Transfer organizer authority")
+    @SecurityRequirement(name = "bearerAuth")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Organizer authority transferred",
+                headers = @Header(name = "ETag", description = "New group version"),
+                content = @Content(schema = @Schema(implementation = OrganizerTransferRepresentation.class))),
+        @ApiResponse(responseCode = "400", description = "Malformed precondition or request", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "401", description = "Authentication required", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "403", description = "Organizer role required", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "404", description = "Private resource not found", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "409", description = "Organizer target or idempotency conflict", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "412", description = "Group version precondition failed", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "422", description = "Validation failed", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "428", description = "If-Match required", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class)))
+    })
+    public ResponseEntity<OrganizerTransferRepresentation> transferOrganizer(
+            @PathVariable UUID groupId,
+            @Valid @RequestBody TransferOrganizerRequest request,
+            @Parameter(name = "If-Match", in = ParameterIn.HEADER, required = true)
+            @RequestHeader(value = "If-Match", required = false) String ifMatch,
+            @RequestHeader("Idempotency-Key") @NotBlank @Size(max = 255) String idempotencyKey,
+            HttpServletRequest servletRequest) {
+        var actor = currentActor.requireAuthenticatedActor();
+        var expectedVersion = GroupVersionPrecondition.parseRequiredIfMatch(ifMatch);
+        var transfer = organizerTransferService.transfer(new TransferOrganizerCommand(
+                actor.accountId(), groupId, request.targetAccountId(), expectedVersion, idempotencyKey,
+                (String) servletRequest.getAttribute(CorrelationIdFilter.REQUEST_ATTRIBUTE)));
+        return ResponseEntity.ok()
+                .eTag(GroupCreationService.etag(transfer.groupVersion()))
+                .body(transfer);
+    }
+
     public record CreateGroupRequest(
             @NotBlank @Size(max = 80) String name,
             @Size(max = 500) String description) {
@@ -260,6 +299,9 @@ public class GroupController {
     public record CreateInvitationRequest(
             @jakarta.validation.constraints.NotNull UUID inviteeAccountId,
             @jakarta.validation.constraints.Min(1) @jakarta.validation.constraints.Max(168) Integer expiryHours) {
+    }
+
+    public record TransferOrganizerRequest(@jakarta.validation.constraints.NotNull UUID targetAccountId) {
     }
 
 }

@@ -262,10 +262,22 @@ Idempotency-Key: ...
 ~~~http
 POST /api/v1/groups/{groupId}/organizer-transfer
 If-Match: "group-version"
+Idempotency-Key: ...
 ~~~
 
 Multiple active organizers are allowed. Transfer promotes an active member and
 demotes only the caller; other organizers do not change.
+
+Success returns the new group ETag and this bounded representation:
+
+~~~json
+{
+  "groupId": "group-uuid",
+  "previousOrganizerAccountId": "caller-account-uuid",
+  "organizerAccountId": "target-account-uuid",
+  "groupVersion": 8
+}
+~~~
 
 ### Leave or remove a member
 

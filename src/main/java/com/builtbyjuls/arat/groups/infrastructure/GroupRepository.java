@@ -277,6 +277,24 @@ public class GroupRepository {
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
+    public void updateActiveMembershipRole(UUID groupId, UUID accountId, MembershipRole role) {
+        var updated = jdbcClient.sql("""
+                        UPDATE group_membership
+                        SET role = :role
+                        WHERE group_id = :groupId
+                          AND account_id = :accountId
+                          AND status = 'ACTIVE'
+                        """)
+                .param("groupId", groupId)
+                .param("accountId", accountId)
+                .param("role", role.name())
+                .update();
+        if (updated != 1) {
+            throw new IllegalStateException("active membership disappeared under group lock");
+        }
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
     public Optional<Group> updateVersioned(UUID groupId, long expectedVersion, String name, String description) {
         var updated = jdbcClient.sql("""
                         UPDATE group_account
