@@ -25,10 +25,17 @@ contract tests from these decisions.
 
 ## Local authentication
 
-Release 1 currently has one local-only development token. Under the `local`
-profile, `Authorization: Bearer arat-local-owner-token` identifies account
-`10000000-0000-4000-8000-000000000001` with no platform roles. The Bearer
-scheme is case-insensitive, while the opaque token value is case-sensitive.
+The `local` profile provides three local-only development tokens. They identify
+the fixed accounts below, each with no platform roles:
+
+| Token | Account | Display name |
+| --- | --- | --- |
+| `arat-local-owner-token` | `10000000-0000-4000-8000-000000000001` | Ari Organizer |
+| `arat-local-member-token` | `10000000-0000-4000-8000-000000000002` | Bea Member |
+| `arat-local-outsider-token` | `10000000-0000-4000-8000-000000000003` | Cruz Outsider |
+
+The Bearer scheme is case-insensitive, while opaque token values are
+case-sensitive. These fake account rows load only under `local`.
 `GET /api/v1/dev/whoami` is available only under `local` and returns only that
 actor UUID as `actorId` to prove the current-actor boundary.
 

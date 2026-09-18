@@ -12,7 +12,9 @@ import org.springframework.security.test.context.support.WithSecurityContext;
 @WithSecurityContext(factory = WithAratActorSecurityContextFactory.class)
 public @interface WithAratActor {
 
-    String accountId() default "10000000-0000-4000-8000-000000000001";
+    AratAccountFixture account() default AratAccountFixture.OWNER;
+
+    String accountId() default "";
 
     PlatformRole[] platformRoles() default {};
 }

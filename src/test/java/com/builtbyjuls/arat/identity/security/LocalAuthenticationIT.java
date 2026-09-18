@@ -23,6 +23,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -38,6 +39,9 @@ class LocalAuthenticationIT extends PostgreSqlIntegrationTest {
 
     @Autowired
     private WebApplicationContext webApplicationContext;
+
+    @Autowired
+    private JdbcClient jdbcClient;
 
     @Autowired
     private CorrelationIdFilter correlationIdFilter;
@@ -78,6 +82,16 @@ class LocalAuthenticationIT extends PostgreSqlIntegrationTest {
 
         assertThat(logAppender.list).allSatisfy(event ->
                 assertThat(event.toString()).doesNotContain(TOKEN).doesNotContain(HttpHeaders.AUTHORIZATION));
+    }
+
+    @Test
+    void selectsEveryDeterministicLocalPrincipal() throws Exception {
+        assertThat(jdbcClient.sql("SELECT count(*) FROM identity_account")
+                .query(Long.class)
+                .single()).isEqualTo(3);
+        assertWhoAmI("arat-local-owner-token", LocalAccountFixtures.OWNER.accountId().toString());
+        assertWhoAmI("arat-local-member-token", LocalAccountFixtures.MEMBER.accountId().toString());
+        assertWhoAmI("arat-local-outsider-token", LocalAccountFixtures.OUTSIDER.accountId().toString());
     }
 
     @Test
@@ -149,5 +163,11 @@ class LocalAuthenticationIT extends PostgreSqlIntegrationTest {
                 .andExpect(jsonPath("$.instance").value("/api/v1/dev/whoami"))
                 .andExpect(jsonPath("$.correlationId").value(CORRELATION_ID))
                 .andExpect(jsonPath("$.violations").isArray());
+    }
+
+    private void assertWhoAmI(String token, String actorId) throws Exception {
+        mockMvc.perform(get("/api/v1/dev/whoami").header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.actorId").value(actorId));
     }
 }

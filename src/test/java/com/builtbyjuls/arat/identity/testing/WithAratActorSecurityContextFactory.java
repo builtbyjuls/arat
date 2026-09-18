@@ -13,7 +13,9 @@ public final class WithAratActorSecurityContextFactory implements WithSecurityCo
     @Override
     public org.springframework.security.core.context.SecurityContext createSecurityContext(WithAratActor annotation) {
         var actor = new AuthenticatedActor(
-                UUID.fromString(annotation.accountId()),
+                annotation.accountId().isBlank()
+                        ? annotation.account().account().accountId()
+                        : UUID.fromString(annotation.accountId()),
                 Arrays.stream(annotation.platformRoles()).collect(java.util.stream.Collectors.toUnmodifiableSet()));
         var authorities = Arrays.stream(annotation.platformRoles())
                 .map(role -> new SimpleGrantedAuthority(role.name()))

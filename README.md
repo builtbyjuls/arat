@@ -249,16 +249,17 @@ The local profile defaults to PostgreSQL at `localhost:5432/arat` with the
 fake `arat` username and password. Override `ARAT_DATABASE_URL`,
 `ARAT_DATABASE_USERNAME`, and `ARAT_DATABASE_PASSWORD` when needed.
 
-The local bearer token is deliberately fake and unsafe for production. It is
-available only in the `local` profile and identifies one fixed development
-actor:
+The local bearer tokens are deliberately fake and unsafe for production. They
+are available only in the `local` profile and select fixed development
+accounts. For example, select the organizer account with:
 
 ~~~bash
 curl -H 'Authorization: Bearer arat-local-owner-token' \
   http://localhost:8080/api/v1/dev/whoami
 ~~~
 
-The token and probe are unavailable outside the `local` profile. The `prod`
+Use `arat-local-member-token` or `arat-local-outsider-token` to select the other
+fixed local accounts. The tokens and probe are unavailable outside the `local` profile. The `prod`
 profile cannot be combined with `local` or `compose`. Stop the host application
 with `Ctrl+C`, then stop the database with `docker compose stop postgres`.
 
