@@ -88,6 +88,28 @@ class LocalAuthenticationIT extends PostgreSqlIntegrationTest {
                 .andExpect(jsonPath("$.actorId").value(ACTOR_ID));
     }
 
+    @Test
+    void exposesPrometheusWithoutAuthenticationInLocalProfile() throws Exception {
+        mockMvc.perform(get("/actuator/prometheus"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("jvm_")));
+    }
+
+    @Test
+    void keepsSensitiveActuatorPathsUnavailableInLocalProfile() throws Exception {
+        for (var path : new String[] {
+            "/actuator/env",
+            "/actuator/beans",
+            "/actuator/configprops",
+            "/actuator/heapdump",
+            "/actuator/loggers",
+            "/actuator/mappings",
+            "/actuator/shutdown"
+        }) {
+            mockMvc.perform(get(path)).andExpect(status().isUnauthorized());
+        }
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"Bearer", "Bearer ", "Bearer unknown-token", "Bearer malformed token"})
     void rejectsMalformedAndUnknownBearerTokens(String authorization) throws Exception {

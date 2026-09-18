@@ -57,4 +57,9 @@ class ProductionSecurityIT extends PostgreSqlIntegrationTest {
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$.code").value("ROUTE_NOT_FOUND"));
     }
+
+    @Test
+    void keepsSensitiveActuatorPathsUnavailableInProduction() throws Exception {
+        mockMvc.perform(get("/actuator/env")).andExpect(status().isUnauthorized());
+    }
 }

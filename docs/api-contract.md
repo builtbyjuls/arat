@@ -696,10 +696,19 @@ way to create a grace window late.
 
 ## Operations APIs
 
-Planned operations endpoints:
+Implemented operational endpoints:
 
-- Spring Boot health and readiness
-- Prometheus metrics
+- `GET /actuator/health/liveness` reports application liveness only.
+- `GET /actuator/health/readiness` reports application readiness and PostgreSQL
+  readiness.
+- `GET /actuator/prometheus` is available only in the `local`, `compose`, and
+  `test` profiles.
+
+Health is exposed in every profile with details hidden. No other actuator
+endpoint is exposed.
+
+Planned operational endpoints:
+
 - Outbox and inbox backlog summaries for authorized operators
 - Redrive command for a failed notification after operator review
 
