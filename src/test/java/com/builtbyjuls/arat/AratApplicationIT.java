@@ -56,7 +56,9 @@ class AratApplicationIT extends PostgreSqlIntegrationTest {
                     .run(
                             "--spring.datasource.url=not-a-jdbc-url",
                             "--spring.datasource.username=arat",
-                            "--spring.datasource.password=" + secret)) {
+                            "--spring.datasource.password=" + secret,
+                            "--arat.invitation.token.active-key-id=runtime",
+                            "--arat.invitation.token.keys.runtime=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=")) {
             }
         })
                 .hasMessageContaining("'url' must start with \"jdbc\"")

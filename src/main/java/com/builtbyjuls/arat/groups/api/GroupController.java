@@ -2,6 +2,7 @@ package com.builtbyjuls.arat.groups.api;
 
 import com.builtbyjuls.arat.groups.application.GroupCreationService;
 import com.builtbyjuls.arat.groups.application.GroupQueryService;
+import com.builtbyjuls.arat.groups.application.InvitationService;
 import com.builtbyjuls.arat.identity.api.CurrentActor;
 import com.builtbyjuls.arat.web.ApiProblemFactory;
 import com.builtbyjuls.arat.web.ApiProblemResponse;
@@ -27,6 +28,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.MediaType;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -43,16 +45,19 @@ public class GroupController {
     private final CurrentActor currentActor;
     private final GroupCreationService groupCreationService;
     private final GroupQueryService groupQueryService;
+    private final InvitationService invitationService;
     private final ApiProblemFactory apiProblemFactory;
 
     public GroupController(
             CurrentActor currentActor,
             GroupCreationService groupCreationService,
             GroupQueryService groupQueryService,
+            InvitationService invitationService,
             ApiProblemFactory apiProblemFactory) {
         this.currentActor = currentActor;
         this.groupCreationService = groupCreationService;
         this.groupQueryService = groupQueryService;
+        this.invitationService = invitationService;
         this.apiProblemFactory = apiProblemFactory;
     }
 
@@ -141,9 +146,70 @@ public class GroupController {
                 .body(group);
     }
 
+    @PostMapping("/{groupId}/invites")
+    @Operation(operationId = "createGroupInvitation", summary = "Create an account-bound group invitation")
+    @SecurityRequirement(name = "bearerAuth")
+    @ApiResponses({
+        @ApiResponse(
+                responseCode = "201",
+                description = "Invitation created",
+                headers = @Header(name = "Location", description = "Created invitation location"),
+                content = @Content(schema = @Schema(implementation = InvitationRepresentation.class))),
+        @ApiResponse(responseCode = "400", description = "Missing or malformed request", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "401", description = "Authentication required", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "403", description = "Organizer role required", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "404", description = "Private resource not found", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "409", description = "Invitation conflict", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "422", description = "Validation failed", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class)))
+    })
+    public ResponseEntity<InvitationRepresentation> createInvitation(
+            @PathVariable UUID groupId,
+            @Valid @RequestBody CreateInvitationRequest request,
+            @RequestHeader("Idempotency-Key") @NotBlank @Size(max = 255) String idempotencyKey,
+            HttpServletRequest servletRequest) {
+        var actor = currentActor.requireAuthenticatedActor();
+        var invitation = invitationService.create(new CreateInvitationCommand(
+                actor.accountId(),
+                groupId,
+                request.inviteeAccountId(),
+                request.expiryHours() == null ? InvitationService.defaultExpiryHours() : request.expiryHours(),
+                idempotencyKey,
+                (String) servletRequest.getAttribute(CorrelationIdFilter.REQUEST_ATTRIBUTE)));
+        return ResponseEntity.created(URI.create(InvitationService.location(groupId, invitation.inviteId())))
+                .body(invitation);
+    }
+
+    @DeleteMapping("/{groupId}/invites/{inviteId}")
+    @Operation(operationId = "revokeGroupInvitation", summary = "Revoke an unused group invitation")
+    @SecurityRequirement(name = "bearerAuth")
+    @ApiResponses({
+        @ApiResponse(responseCode = "204", description = "Invitation revoked"),
+        @ApiResponse(responseCode = "400", description = "Missing or malformed request", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "401", description = "Authentication required", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "403", description = "Organizer role required", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "404", description = "Private resource or invitation unavailable", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "409", description = "Idempotency key reused", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class)))
+    })
+    public ResponseEntity<Void> revokeInvitation(
+            @PathVariable UUID groupId,
+            @PathVariable UUID inviteId,
+            @RequestHeader("Idempotency-Key") @NotBlank @Size(max = 255) String idempotencyKey,
+            HttpServletRequest servletRequest) {
+        var actor = currentActor.requireAuthenticatedActor();
+        invitationService.revoke(new RevokeInvitationCommand(
+                actor.accountId(), groupId, inviteId, idempotencyKey,
+                (String) servletRequest.getAttribute(CorrelationIdFilter.REQUEST_ATTRIBUTE)));
+        return ResponseEntity.noContent().build();
+    }
+
     public record CreateGroupRequest(
             @NotBlank @Size(max = 80) String name,
             @Size(max = 500) String description) {
+    }
+
+    public record CreateInvitationRequest(
+            @jakarta.validation.constraints.NotNull UUID inviteeAccountId,
+            @jakarta.validation.constraints.Min(1) @jakarta.validation.constraints.Max(168) Integer expiryHours) {
     }
 
 }

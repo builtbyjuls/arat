@@ -13,7 +13,10 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
-@SpringBootTest
+@SpringBootTest(properties = {
+    "arat.invitation.token.active-key-id=runtime",
+    "arat.invitation.token.keys.runtime=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+})
 @ActiveProfiles("prod")
 class NonLocalOperationalEndpointsIT extends PostgreSqlIntegrationTest {
 
