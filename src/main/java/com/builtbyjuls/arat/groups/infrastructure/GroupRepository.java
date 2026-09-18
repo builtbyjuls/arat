@@ -5,9 +5,11 @@ import com.builtbyjuls.arat.groups.domain.GroupStatus;
 import com.builtbyjuls.arat.groups.domain.Membership;
 import com.builtbyjuls.arat.groups.domain.MembershipRole;
 import com.builtbyjuls.arat.groups.domain.MembershipStatus;
+import com.builtbyjuls.arat.groups.domain.PrivateGroupDetails;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -133,6 +135,50 @@ public class GroupRepository {
     }
 
     @Transactional(readOnly = true)
+    public Optional<PrivateGroupDetails> findPrivateDetails(
+            UUID groupId, UUID accountId) {
+        var rows = jdbcClient.sql("""
+                        SELECT g.group_id, g.name, g.description, g.status, g.created_by_account_id,
+                               g.version, g.created_at, g.updated_at,
+                               m.account_id AS member_account_id,
+                               m.role AS member_role,
+                               m.status AS member_status,
+                               m.joined_at AS member_joined_at,
+                               m.ended_at AS member_ended_at
+                        FROM group_account g
+                        JOIN group_membership m ON m.group_id = g.group_id
+                        WHERE g.group_id = :groupId
+                          AND m.status = 'ACTIVE'
+                          AND EXISTS (
+                              SELECT 1
+                              FROM group_membership viewer_membership
+                              WHERE viewer_membership.group_id = g.group_id
+                                AND viewer_membership.account_id = :accountId
+                                AND viewer_membership.status = 'ACTIVE'
+                          )
+                        ORDER BY m.account_id
+                        """)
+                .param("groupId", groupId)
+                .param("accountId", accountId)
+                .query((resultSet, rowNum) -> new PrivateGroupRow(
+                        mapGroup(resultSet, rowNum),
+                        new Membership(
+                                resultSet.getObject("group_id", UUID.class),
+                                resultSet.getObject("member_account_id", UUID.class),
+                                MembershipRole.valueOf(resultSet.getString("member_role")),
+                                MembershipStatus.valueOf(resultSet.getString("member_status")),
+                                resultSet.getObject("member_joined_at", OffsetDateTime.class),
+                                resultSet.getObject("member_ended_at", OffsetDateTime.class))))
+                .list();
+        if (rows.isEmpty()) {
+            return Optional.empty();
+        }
+        var members = new ArrayList<Membership>();
+        rows.forEach(row -> members.add(row.membership()));
+        return Optional.of(new PrivateGroupDetails(rows.getFirst().group(), members));
+    }
+
+    @Transactional(readOnly = true)
     public Optional<Membership> findMembership(UUID groupId, UUID accountId) {
         return findMembership(groupId, accountId, "");
     }
@@ -211,5 +257,8 @@ public class GroupRepository {
                 MembershipStatus.valueOf(resultSet.getString("status")),
                 resultSet.getObject("joined_at", OffsetDateTime.class),
                 resultSet.getObject("ended_at", OffsetDateTime.class));
+    }
+
+    private record PrivateGroupRow(Group group, Membership membership) {
     }
 }
