@@ -10,6 +10,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -223,6 +224,56 @@ public class GroupRepository {
                 .param("groupId", groupId)
                 .query(this::mapGroup)
                 .single();
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Optional<Group> findAndLockGroup(UUID groupId) {
+        return jdbcClient.sql("""
+                        SELECT group_id, name, description, status, created_by_account_id,
+                               version, created_at, updated_at
+                        FROM group_account
+                        WHERE group_id = :groupId
+                        FOR UPDATE
+                        """)
+                .param("groupId", groupId)
+                .query(this::mapGroup)
+                .optional();
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public List<Membership> findActiveMemberships(UUID groupId) {
+        return jdbcClient.sql("""
+                        SELECT group_id, account_id, role, status, joined_at, ended_at
+                        FROM group_membership
+                        WHERE group_id = :groupId
+                          AND status = 'ACTIVE'
+                        ORDER BY account_id
+                        """)
+                .param("groupId", groupId)
+                .query(this::mapMembership)
+                .list();
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Optional<Membership> endActiveMembership(
+            UUID groupId, UUID accountId, MembershipStatus status) {
+        if (status == MembershipStatus.ACTIVE) {
+            throw new IllegalArgumentException("membership exit status must be inactive");
+        }
+        return jdbcClient.sql("""
+                        UPDATE group_membership
+                        SET status = :status,
+                            ended_at = statement_timestamp()
+                        WHERE group_id = :groupId
+                          AND account_id = :accountId
+                          AND status = 'ACTIVE'
+                        RETURNING group_id, account_id, role, status, joined_at, ended_at
+                        """)
+                .param("groupId", groupId)
+                .param("accountId", accountId)
+                .param("status", status.name())
+                .query(this::mapMembership)
+                .optional();
     }
 
     @Transactional(propagation = Propagation.MANDATORY)

@@ -3,6 +3,7 @@ package com.builtbyjuls.arat.groups.api;
 import com.builtbyjuls.arat.groups.application.GroupCreationService;
 import com.builtbyjuls.arat.groups.application.GroupQueryService;
 import com.builtbyjuls.arat.groups.application.InvitationService;
+import com.builtbyjuls.arat.groups.application.MembershipExitService;
 import com.builtbyjuls.arat.identity.api.CurrentActor;
 import com.builtbyjuls.arat.web.ApiProblemFactory;
 import com.builtbyjuls.arat.web.ApiProblemResponse;
@@ -46,6 +47,7 @@ public class GroupController {
     private final GroupCreationService groupCreationService;
     private final GroupQueryService groupQueryService;
     private final InvitationService invitationService;
+    private final MembershipExitService membershipExitService;
     private final ApiProblemFactory apiProblemFactory;
 
     public GroupController(
@@ -53,11 +55,13 @@ public class GroupController {
             GroupCreationService groupCreationService,
             GroupQueryService groupQueryService,
             InvitationService invitationService,
+            MembershipExitService membershipExitService,
             ApiProblemFactory apiProblemFactory) {
         this.currentActor = currentActor;
         this.groupCreationService = groupCreationService;
         this.groupQueryService = groupQueryService;
         this.invitationService = invitationService;
+        this.membershipExitService = membershipExitService;
         this.apiProblemFactory = apiProblemFactory;
     }
 
@@ -200,6 +204,52 @@ public class GroupController {
                 actor.accountId(), groupId, inviteId, idempotencyKey,
                 (String) servletRequest.getAttribute(CorrelationIdFilter.REQUEST_ATTRIBUTE)));
         return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/{groupId}/members/me")
+    @Operation(operationId = "leaveGroup", summary = "Leave a private group")
+    @SecurityRequirement(name = "bearerAuth")
+    @ApiResponses({
+        @ApiResponse(responseCode = "204", description = "Member left", headers = @Header(name = "ETag", description = "New group version")),
+        @ApiResponse(responseCode = "400", description = "Missing or malformed request", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "401", description = "Authentication required", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "404", description = "Private resource not found", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "409", description = "Final organizer or idempotency conflict", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "422", description = "Validation failed", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class)))
+    })
+    public ResponseEntity<Void> leave(
+            @PathVariable UUID groupId,
+            @RequestHeader("Idempotency-Key") @NotBlank @Size(max = 255) String idempotencyKey,
+            HttpServletRequest servletRequest) {
+        var actor = currentActor.requireAuthenticatedActor();
+        var etag = membershipExitService.leave(new LeaveGroupCommand(
+                actor.accountId(), groupId, idempotencyKey,
+                (String) servletRequest.getAttribute(CorrelationIdFilter.REQUEST_ATTRIBUTE)));
+        return ResponseEntity.noContent().eTag(etag).build();
+    }
+
+    @DeleteMapping("/{groupId}/members/{accountId}")
+    @Operation(operationId = "removeGroupMember", summary = "Remove a member from a private group")
+    @SecurityRequirement(name = "bearerAuth")
+    @ApiResponses({
+        @ApiResponse(responseCode = "204", description = "Member removed", headers = @Header(name = "ETag", description = "New group version")),
+        @ApiResponse(responseCode = "400", description = "Missing or malformed request", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "401", description = "Authentication required", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "403", description = "Organizer role required", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "404", description = "Private resource not found", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "409", description = "Final organizer or idempotency conflict", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "422", description = "Self target is invalid", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class)))
+    })
+    public ResponseEntity<Void> remove(
+            @PathVariable UUID groupId,
+            @PathVariable UUID accountId,
+            @RequestHeader("Idempotency-Key") @NotBlank @Size(max = 255) String idempotencyKey,
+            HttpServletRequest servletRequest) {
+        var actor = currentActor.requireAuthenticatedActor();
+        var etag = membershipExitService.remove(new RemoveGroupMemberCommand(
+                actor.accountId(), groupId, accountId, idempotencyKey,
+                (String) servletRequest.getAttribute(CorrelationIdFilter.REQUEST_ATTRIBUTE)));
+        return ResponseEntity.noContent().eTag(etag).build();
     }
 
     public record CreateGroupRequest(
