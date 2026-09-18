@@ -48,6 +48,42 @@ public class GroupRepository {
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
+    public Group insertNew(UUID groupId, String name, String description, UUID createdByAccountId) {
+        return jdbcClient.sql("""
+                        INSERT INTO group_account (
+                            group_id, name, description, status, created_by_account_id, version, created_at, updated_at
+                        )
+                        VALUES (
+                            :groupId, :name, :description, 'ACTIVE', :createdByAccountId, 1,
+                            statement_timestamp(), statement_timestamp()
+                        )
+                        RETURNING group_id, name, description, status, created_by_account_id,
+                                  version, created_at, updated_at
+                        """)
+                .param("groupId", groupId)
+                .param("name", name)
+                .param("description", description)
+                .param("createdByAccountId", createdByAccountId)
+                .query(this::mapGroup)
+                .single();
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void insertOrganizerMembership(UUID groupId, UUID accountId) {
+        jdbcClient.sql("""
+                        INSERT INTO group_membership (
+                            group_id, account_id, role, status, joined_at, ended_at
+                        )
+                        VALUES (
+                            :groupId, :accountId, 'ORGANIZER', 'ACTIVE', statement_timestamp(), NULL
+                        )
+                        """)
+                .param("groupId", groupId)
+                .param("accountId", accountId)
+                .update();
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
     public void insertMembership(Membership membership) {
         jdbcClient.sql("""
                         INSERT INTO group_membership (

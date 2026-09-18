@@ -1,5 +1,6 @@
 package com.builtbyjuls.arat.web;
 
+import com.builtbyjuls.arat.platform.idempotency.IdempotencyKeyReusedException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.ConstraintViolation;
@@ -116,6 +117,13 @@ public class ApiProblemAdvice {
                 .map(violation -> new ProblemViolation(constraintFieldName(violation), INVALID_VALUE))
                 .toList();
         writeValidationFailure(request, response, violations);
+    }
+
+    @ExceptionHandler(IdempotencyKeyReusedException.class)
+    void idempotencyKeyReused(
+            HttpServletRequest request, HttpServletResponse response) throws IOException {
+        write(request, response, HttpStatus.CONFLICT, "IDEMPOTENCY_KEY_REUSED", "Idempotency key reused",
+                "The idempotency key was already used with a different request.", List.of());
     }
 
     @ExceptionHandler(Throwable.class)
