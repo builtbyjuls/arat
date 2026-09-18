@@ -1,6 +1,8 @@
 package com.builtbyjuls.arat.groups.application;
 
 import com.builtbyjuls.arat.groups.api.CreateInvitationCommand;
+import com.builtbyjuls.arat.groups.api.AcceptInvitationCommand;
+import com.builtbyjuls.arat.groups.api.GroupMembershipRepresentation;
 import com.builtbyjuls.arat.groups.api.InvitationRepresentation;
 import com.builtbyjuls.arat.groups.api.InvitationException;
 import com.builtbyjuls.arat.groups.api.RevokeInvitationCommand;
@@ -34,6 +36,7 @@ public class InvitationService {
 
     public static final String CREATE_INVITATION_OPERATION = "groups.invites.create";
     public static final String REVOKE_INVITATION_OPERATION = "groups.invites.revoke";
+    public static final String ACCEPT_INVITATION_OPERATION = "groups.invites.accept";
     private static final int DEFAULT_EXPIRY_HOURS = 72;
 
     private final GroupRepository groupRepository;
@@ -161,6 +164,54 @@ public class InvitationService {
                 command.inviteId()));
     }
 
+    @Transactional
+    public GroupMembershipRepresentation accept(AcceptInvitationCommand command) {
+        var tokenDigest = invitationDigest(command.token());
+        var scope = new IdempotencyScope(command.actorId(), ACCEPT_INVITATION_OPERATION, command.idempotencyKey());
+        var fingerprint = RequestFingerprint.fromCanonicalFields(Map.of("tokenDigest", tokenDigest));
+        var claim = idempotencyRepository.claim(scope, fingerprint);
+        if (claim instanceof ClaimResult.Replay replay) {
+            return replayAcceptance(replay.response());
+        }
+        rejectUnusableClaim(claim);
+
+        var invitation = invitationRepository.findByTokenDigest(tokenDigest)
+                .orElseThrow(() -> new InvitationException(InvitationException.Reason.INVITATION_UNAVAILABLE));
+        groupRepository.lockGroup(invitation.groupId());
+        invitation = invitationRepository.findByTokenDigest(tokenDigest)
+                .orElseThrow(() -> new InvitationException(InvitationException.Reason.INVITATION_UNAVAILABLE));
+        if (!invitation.inviteeAccountId().equals(command.actorId())) {
+            throw new InvitationException(InvitationException.Reason.INVITATION_UNAVAILABLE);
+        }
+        if (invitationRepository.consumePending(invitation.inviteId()).isEmpty()) {
+            throw new InvitationException(InvitationException.Reason.INVITATION_UNAVAILABLE);
+        }
+        if (groupRepository.activateMember(invitation.groupId(), command.actorId()).isEmpty()) {
+            throw new InvitationException(InvitationException.Reason.INVITATION_UNAVAILABLE);
+        }
+        var group = groupRepository.incrementVersion(invitation.groupId());
+        var representation = new GroupMembershipRepresentation(
+                invitation.groupId(), command.actorId(), MembershipRole.MEMBER.name(), group.version());
+        auditEventWriter.append(new AuditEvent(
+                UUID.randomUUID(),
+                command.actorId(),
+                "group.invitation.accepted",
+                "groupInvitation",
+                invitation.inviteId(),
+                invitation.groupId(),
+                null,
+                command.correlationId(),
+                AuditMetadata.references(Map.of(
+                        "inviteId", invitation.inviteId(),
+                        "inviteeAccountId", invitation.inviteeAccountId()))));
+        idempotencyRepository.complete(scope, new CompletedIdempotencyResponse(
+                200,
+                ReplayState.from(objectMapper.valueToTree(representation), objectMapper),
+                StoredReplayHeaders.from(Map.of("ETag", GroupCreationService.etag(group.version()))),
+                invitation.groupId()));
+        return representation;
+    }
+
     public static String location(UUID groupId, UUID inviteId) {
         return "/api/v1/groups/" + groupId + "/invites/" + inviteId;
     }
@@ -179,6 +230,22 @@ public class InvitationService {
                 invitationTokenService.tokenFor(
                         invitation.inviteId(), invitation.groupId(), invitation.inviteeAccountId(),
                         invitation.nonce(), invitation.tokenKeyId()));
+    }
+
+    private GroupMembershipRepresentation replayAcceptance(CompletedIdempotencyResponse response) {
+        try {
+            return objectMapper.treeToValue(response.replayState().value(), GroupMembershipRepresentation.class);
+        } catch (JacksonException exception) {
+            throw new IllegalStateException("stored invitation acceptance replay response is invalid", exception);
+        }
+    }
+
+    private String invitationDigest(String token) {
+        try {
+            return invitationTokenService.digest(token);
+        } catch (IllegalArgumentException exception) {
+            throw new InvitationException(InvitationException.Reason.INVITATION_UNAVAILABLE);
+        }
     }
 
     private InvitationReplayMetadata readReplayMetadata(CompletedIdempotencyResponse response) {

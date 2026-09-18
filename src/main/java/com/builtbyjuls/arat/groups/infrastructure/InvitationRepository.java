@@ -82,6 +82,35 @@ public class InvitationRepository {
                 .optional();
     }
 
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Optional<Invitation> consumePending(UUID inviteId) {
+        return jdbcClient.sql("""
+                        UPDATE group_invitation
+                        SET state = 'CONSUMED', updated_at = statement_timestamp()
+                        WHERE invite_id = :inviteId
+                          AND state = 'PENDING'
+                          AND expires_at > statement_timestamp()
+                        RETURNING invite_id, group_id, invitee_account_id, token_key_id, nonce, token_digest,
+                                  state, expires_at, created_by_account_id, created_at, updated_at
+                        """)
+                .param("inviteId", inviteId)
+                .query(this::mapInvitation)
+                .optional();
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<Invitation> findByTokenDigest(String tokenDigest) {
+        return jdbcClient.sql("""
+                        SELECT invite_id, group_id, invitee_account_id, token_key_id, nonce, token_digest,
+                               state, expires_at, created_by_account_id, created_at, updated_at
+                        FROM group_invitation
+                        WHERE token_digest = :tokenDigest
+                        """)
+                .param("tokenDigest", tokenDigest)
+                .query(this::mapInvitation)
+                .optional();
+    }
+
     @Transactional(readOnly = true)
     public Optional<Invitation> findById(UUID inviteId) {
         return jdbcClient.sql("""

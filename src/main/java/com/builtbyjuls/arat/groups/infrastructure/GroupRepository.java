@@ -104,6 +104,29 @@ public class GroupRepository {
                 .update();
     }
 
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Optional<Membership> activateMember(UUID groupId, UUID accountId) {
+        return jdbcClient.sql("""
+                        INSERT INTO group_membership (
+                            group_id, account_id, role, status, joined_at, ended_at
+                        )
+                        VALUES (
+                            :groupId, :accountId, 'MEMBER', 'ACTIVE', statement_timestamp(), NULL
+                        )
+                        ON CONFLICT (group_id, account_id) DO UPDATE
+                        SET role = 'MEMBER',
+                            status = 'ACTIVE',
+                            joined_at = statement_timestamp(),
+                            ended_at = NULL
+                        WHERE group_membership.status IN ('LEFT', 'REMOVED')
+                        RETURNING group_id, account_id, role, status, joined_at, ended_at
+                        """)
+                .param("groupId", groupId)
+                .param("accountId", accountId)
+                .query(this::mapMembership)
+                .optional();
+    }
+
     @Transactional(readOnly = true)
     public Optional<Group> findById(UUID groupId) {
         return jdbcClient.sql("""
@@ -222,6 +245,21 @@ public class GroupRepository {
                 .query(this::mapGroup)
                 .optional();
         return updated;
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Group incrementVersion(UUID groupId) {
+        return jdbcClient.sql("""
+                        UPDATE group_account
+                        SET version = version + 1,
+                            updated_at = statement_timestamp()
+                        WHERE group_id = :groupId
+                        RETURNING group_id, name, description, status, created_by_account_id,
+                                  version, created_at, updated_at
+                        """)
+                .param("groupId", groupId)
+                .query(this::mapGroup)
+                .single();
     }
 
     private Optional<Membership> findMembership(UUID groupId, UUID accountId, String statusPredicate) {

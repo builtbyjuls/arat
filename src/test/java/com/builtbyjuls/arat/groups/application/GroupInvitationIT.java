@@ -14,6 +14,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.builtbyjuls.arat.PostgreSqlIntegrationTest;
 import com.builtbyjuls.arat.groups.api.CreateGroupCommand;
 import com.builtbyjuls.arat.groups.api.CreateInvitationCommand;
+import com.builtbyjuls.arat.groups.api.AcceptInvitationCommand;
+import com.builtbyjuls.arat.groups.api.GroupMembershipRepresentation;
 import com.builtbyjuls.arat.groups.api.InvitationException;
 import com.builtbyjuls.arat.groups.api.InvitationRepresentation;
 import com.builtbyjuls.arat.identity.api.AuthenticatedActor;
@@ -318,13 +320,172 @@ class GroupInvitationIT extends PostgreSqlIntegrationTest {
     }
 
     @Test
+    void acceptsOnceAndExactReplayReturnsTheOriginalMembershipAndEtag() throws Exception {
+        var created = createAs(OWNER_ID, "accept-create", MEMBER_ID, null)
+                .andExpect(status().isCreated()).andReturn().getResponse();
+        var token = jsonValue(created.getContentAsString(), "token");
+
+        var first = acceptAs(MEMBER_ID, "accept-once", token)
+                .andExpect(status().isOk())
+                .andExpect(header().string("ETag", "\"2\""))
+                .andExpect(jsonPath("$.groupId").value(groupId.toString()))
+                .andExpect(jsonPath("$.accountId").value(MEMBER_ID.toString()))
+                .andExpect(jsonPath("$.role").value("MEMBER"))
+                .andExpect(jsonPath("$.groupVersion").value(2))
+                .andReturn().getResponse();
+        var replay = acceptAs(MEMBER_ID, "accept-once", token)
+                .andExpect(status().isOk())
+                .andExpect(header().string("ETag", first.getHeader("ETag")))
+                .andReturn().getResponse();
+
+        assertThat(replay.getContentAsString()).isEqualTo(first.getContentAsString());
+        assertThat(jdbcClient.sql("SELECT state FROM group_invitation").query(String.class).single()).isEqualTo("CONSUMED");
+        assertThat(jdbcClient.sql("SELECT count(*) FROM group_membership WHERE group_id = :groupId AND account_id = :accountId AND status = 'ACTIVE'")
+                .param("groupId", groupId).param("accountId", MEMBER_ID).query(Long.class).single()).isOne();
+        assertThat(jdbcClient.sql("SELECT version FROM group_account WHERE group_id = :groupId")
+                .param("groupId", groupId).query(Long.class).single()).isEqualTo(2L);
+        assertThat(jdbcClient.sql("SELECT count(*) FROM audit_event WHERE action = 'group.invitation.accepted'")
+                .query(Long.class).single()).isOne();
+    }
+
+    @Test
+    void reactivatesFormerMembershipAsMember() throws Exception {
+        insertMembership(MEMBER_ID, "ORGANIZER", "LEFT", "statement_timestamp()");
+        var created = createAs(OWNER_ID, "accept-former-create", MEMBER_ID, null)
+                .andExpect(status().isCreated()).andReturn().getResponse();
+
+        acceptAs(MEMBER_ID, "accept-former", jsonValue(created.getContentAsString(), "token"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("ETag", "\"2\""))
+                .andExpect(jsonPath("$.role").value("MEMBER"));
+
+        assertThat(jdbcClient.sql("SELECT role FROM group_membership WHERE group_id = :groupId AND account_id = :accountId")
+                .param("groupId", groupId).param("accountId", MEMBER_ID).query(String.class).single()).isEqualTo("MEMBER");
+        assertThat(jdbcClient.sql("SELECT status FROM group_membership WHERE group_id = :groupId AND account_id = :accountId")
+                .param("groupId", groupId).param("accountId", MEMBER_ID).query(String.class).single()).isEqualTo("ACTIVE");
+    }
+
+    @Test
+    void makesUnknownWrongAccountExpiredRevokedAndConsumedTokensIndistinguishable() throws Exception {
+        var unavailable = acceptAs(MEMBER_ID, "accept-random", "YWJj")
+                .andExpect(status().isNotFound()).andReturn().getResponse().getContentAsString();
+        var pending = createAs(OWNER_ID, "accept-wrong-create", MEMBER_ID, null)
+                .andExpect(status().isCreated()).andReturn().getResponse();
+        var token = jsonValue(pending.getContentAsString(), "token");
+        var wrongAccount = acceptAs(OUTSIDER_ID, "accept-wrong", token)
+                .andExpect(status().isNotFound()).andReturn().getResponse().getContentAsString();
+        jdbcClient.sql("UPDATE group_invitation SET expires_at = statement_timestamp() - INTERVAL '1 second'").update();
+        var expired = acceptAs(MEMBER_ID, "accept-expired", token)
+                .andExpect(status().isNotFound()).andReturn().getResponse().getContentAsString();
+        var revoked = createAs(OWNER_ID, "accept-revoked-create", MEMBER_ID, null)
+                .andExpect(status().isCreated()).andReturn().getResponse();
+        revokeAs(OWNER_ID, "accept-revoked", UUID.fromString(jsonValue(revoked.getContentAsString(), "inviteId")))
+                .andExpect(status().isNoContent());
+        var revokedResult = acceptAs(MEMBER_ID, "accept-revoked", jsonValue(revoked.getContentAsString(), "token"))
+                .andExpect(status().isNotFound()).andReturn().getResponse().getContentAsString();
+        var consumed = createAs(OWNER_ID, "accept-consumed-create", MEMBER_ID, null)
+                .andExpect(status().isCreated()).andReturn().getResponse();
+        var consumedToken = jsonValue(consumed.getContentAsString(), "token");
+        acceptAs(MEMBER_ID, "accept-consumed-first", consumedToken).andExpect(status().isOk());
+        var consumedResult = acceptAs(MEMBER_ID, "accept-consumed-second", consumedToken)
+                .andExpect(status().isNotFound()).andReturn().getResponse().getContentAsString();
+
+        assertThat(wrongAccount).isEqualTo(unavailable);
+        assertThat(expired).isEqualTo(unavailable);
+        assertThat(revokedResult).isEqualTo(unavailable);
+        assertThat(consumedResult).isEqualTo(unavailable);
+        assertThat(unavailable).contains("INVITATION_UNAVAILABLE").doesNotContain(token);
+    }
+
+    @Test
+    void redactsAcceptanceTokensFromValidationAndAuthenticationProblems() throws Exception {
+        var created = createAs(OWNER_ID, "accept-redaction-create", MEMBER_ID, null)
+                .andExpect(status().isCreated()).andReturn().getResponse();
+        var token = jsonValue(created.getContentAsString(), "token");
+
+        var missingKey = mockMvc.perform(post("/api/v1/group-invites/{token}/accept", token)
+                        .with(authentication(authenticationFor(MEMBER_ID)))
+                        .header(CorrelationIdFilter.HEADER_NAME, CORRELATION_ID))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.instance").value("/api/v1/group-invites/accept"))
+                .andReturn().getResponse().getContentAsString();
+        var unauthenticated = mockMvc.perform(post("/api/v1/group-invites/{token}/accept", token)
+                        .header("Idempotency-Key", "accept-redaction")
+                        .header(CorrelationIdFilter.HEADER_NAME, CORRELATION_ID))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.instance").value("/api/v1/group-invites/accept"))
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(missingKey).doesNotContain(token);
+        assertThat(unauthenticated).doesNotContain(token);
+    }
+
+    @Test
+    void concurrentAcceptanceConsumesOneInvitationAndAppendsOneAuditEvent() throws Exception {
+        var created = createAs(OWNER_ID, "accept-race-create", MEMBER_ID, null)
+                .andExpect(status().isCreated()).andReturn().getResponse();
+        var token = jsonValue(created.getContentAsString(), "token");
+        var barrier = new CyclicBarrier(2);
+        var first = new AcceptInvitationCommand(MEMBER_ID, token, "accept-race-first", CORRELATION_ID);
+        var second = new AcceptInvitationCommand(MEMBER_ID, token, "accept-race-second", CORRELATION_ID);
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var tasks = List.of(
+                    executor.submit(() -> acceptOrReturnFailureAfterBarrier(first, barrier)),
+                    executor.submit(() -> acceptOrReturnFailureAfterBarrier(second, barrier)));
+            var outcomes = List.of(tasks.get(0).get(10, TimeUnit.SECONDS), tasks.get(1).get(10, TimeUnit.SECONDS));
+            assertThat(outcomes.stream().filter(GroupMembershipRepresentation.class::isInstance)).hasSize(1);
+            assertThat(outcomes.stream().filter(InvitationException.class::isInstance)
+                    .map(InvitationException.class::cast)
+                    .map(InvitationException::reason))
+                    .containsExactly(InvitationException.Reason.INVITATION_UNAVAILABLE);
+        }
+        assertThat(jdbcClient.sql("SELECT count(*) FROM group_membership WHERE group_id = :groupId AND account_id = :accountId AND status = 'ACTIVE'")
+                .param("groupId", groupId).param("accountId", MEMBER_ID).query(Long.class).single()).isOne();
+        assertThat(jdbcClient.sql("SELECT count(*) FROM group_invitation WHERE state = 'CONSUMED'").query(Long.class).single()).isOne();
+        assertThat(jdbcClient.sql("SELECT count(*) FROM audit_event WHERE action = 'group.invitation.accepted'").query(Long.class).single()).isOne();
+    }
+
+    @Test
+    void rollsBackAcceptanceWhenAuditAppendFails() throws Exception {
+        var created = createAs(OWNER_ID, "accept-rollback-create", MEMBER_ID, null)
+                .andExpect(status().isCreated()).andReturn().getResponse();
+        jdbcClient.sql("""
+                CREATE FUNCTION test_fail_invitation_accept_audit()
+                RETURNS trigger LANGUAGE plpgsql AS $$
+                BEGIN RAISE EXCEPTION 'forced invitation acceptance audit failure'; END;
+                $$
+                """).update();
+        jdbcClient.sql("""
+                CREATE TRIGGER fail_invitation_accept_audit BEFORE INSERT ON audit_event
+                FOR EACH ROW WHEN (NEW.action = 'group.invitation.accepted')
+                EXECUTE FUNCTION test_fail_invitation_accept_audit()
+                """).update();
+
+        acceptAs(MEMBER_ID, "accept-rollback", jsonValue(created.getContentAsString(), "token"))
+                .andExpect(status().isInternalServerError());
+
+        assertThat(jdbcClient.sql("SELECT state FROM group_invitation").query(String.class).single()).isEqualTo("PENDING");
+        assertThat(jdbcClient.sql("SELECT count(*) FROM group_membership WHERE group_id = :groupId AND account_id = :accountId")
+                .param("groupId", groupId).param("accountId", MEMBER_ID).query(Long.class).single()).isZero();
+        assertThat(jdbcClient.sql("SELECT version FROM group_account WHERE group_id = :groupId")
+                .param("groupId", groupId).query(Long.class).single()).isOne();
+        assertThat(jdbcClient.sql("SELECT count(*) FROM idempotency_record WHERE idempotency_key = 'accept-rollback'")
+                .query(Long.class).single()).isZero();
+        jdbcClient.sql("DROP TRIGGER fail_invitation_accept_audit ON audit_event").update();
+        jdbcClient.sql("DROP FUNCTION test_fail_invitation_accept_audit()").update();
+    }
+
+    @Test
     void publishesInvitationEndpointsInExecutableOpenApi() throws Exception {
         mockMvc.perform(get("/v3/api-docs"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.paths['/api/v1/groups/{groupId}/invites'].post.operationId").value("createGroupInvitation"))
                 .andExpect(jsonPath("$.paths['/api/v1/groups/{groupId}/invites'].post.responses['201'].headers.Location").exists())
                 .andExpect(jsonPath("$.paths['/api/v1/groups/{groupId}/invites/{inviteId}'].delete.operationId").value("revokeGroupInvitation"))
-                .andExpect(jsonPath("$.paths['/api/v1/groups/{groupId}/invites/{inviteId}'].delete.responses['204']").exists());
+                .andExpect(jsonPath("$.paths['/api/v1/groups/{groupId}/invites/{inviteId}'].delete.responses['204']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/group-invites/{token}/accept'].post.operationId").value("acceptGroupInvitation"))
+                .andExpect(jsonPath("$.paths['/api/v1/group-invites/{token}/accept'].post.responses['200'].headers.ETag").exists());
     }
 
     private org.springframework.test.web.servlet.ResultActions createAs(UUID actorId, String key, UUID inviteeId, Integer expiryHours) throws Exception {
@@ -339,6 +500,13 @@ class GroupInvitationIT extends PostgreSqlIntegrationTest {
 
     private org.springframework.test.web.servlet.ResultActions revokeAs(UUID actorId, String key, UUID inviteId) throws Exception {
         return mockMvc.perform(delete("/api/v1/groups/{groupId}/invites/{inviteId}", groupId, inviteId)
+                .with(authentication(authenticationFor(actorId)))
+                .header("Idempotency-Key", key)
+                .header(CorrelationIdFilter.HEADER_NAME, CORRELATION_ID));
+    }
+
+    private org.springframework.test.web.servlet.ResultActions acceptAs(UUID actorId, String key, String token) throws Exception {
+        return mockMvc.perform(post("/api/v1/group-invites/{token}/accept", token)
                 .with(authentication(authenticationFor(actorId)))
                 .header("Idempotency-Key", key)
                 .header(CorrelationIdFilter.HEADER_NAME, CORRELATION_ID));
@@ -369,6 +537,15 @@ class GroupInvitationIT extends PostgreSqlIntegrationTest {
         barrier.await(10, TimeUnit.SECONDS);
         try {
             return invitationService.create(command);
+        } catch (InvitationException exception) {
+            return exception;
+        }
+    }
+
+    private Object acceptOrReturnFailureAfterBarrier(AcceptInvitationCommand command, CyclicBarrier barrier) throws Exception {
+        barrier.await(10, TimeUnit.SECONDS);
+        try {
+            return invitationService.accept(command);
         } catch (InvitationException exception) {
             return exception;
         }
