@@ -224,6 +224,16 @@ password, activate the local profile:
 SPRING_PROFILES_ACTIVE=local ./mvnw spring-boot:run
 ~~~
 
+After startup, the local-only authentication probe verifies the current actor:
+
+~~~bash
+curl -H 'Authorization: Bearer arat-local-owner-token' \
+  http://localhost:8080/api/v1/dev/whoami
+~~~
+
+The token and probe are unavailable outside the `local` profile. The `prod`
+profile cannot be combined with `local` or `compose`.
+
 For other environments, set `ARAT_DATABASE_URL`, `ARAT_DATABASE_USERNAME`, and
 `ARAT_DATABASE_PASSWORD` before starting the application:
 

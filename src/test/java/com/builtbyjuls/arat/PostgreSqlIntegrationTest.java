@@ -7,7 +7,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers
-abstract class PostgreSqlIntegrationTest {
+public abstract class PostgreSqlIntegrationTest {
 
     @Container
     @ServiceConnection

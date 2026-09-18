@@ -25,9 +25,23 @@ contract tests from these decisions.
 
 ## Local authentication
 
-Release 1 uses a development-only identity provider or signed local token. The
-principal identifies one account and may carry a platform-level
-`PLATFORM_OPERATOR` role for restricted administrative paths.
+Release 1 currently has one local-only development token. Under the `local`
+profile, `Authorization: Bearer arat-local-owner-token` identifies account
+`10000000-0000-4000-8000-000000000001` with no platform roles. The Bearer
+scheme is case-insensitive, while the opaque token value is case-sensitive.
+`GET /api/v1/dev/whoami` is available only under `local` and returns only that
+actor UUID as `actorId` to prove the current-actor boundary.
+
+Every `/api/**` path requires an authenticated principal. Missing, malformed,
+or unknown credentials return a correlated `401 AUTHENTICATION_REQUIRED`
+problem with `WWW-Authenticate: Bearer`; authenticated authorization failures
+return `403 ACCESS_DENIED`. Production has no identity adapter and therefore
+fails closed. Startup rejects any `prod` profile combined with `local` or
+`compose`; fake identity components and the development probe also explicitly
+exclude `prod`.
+
+The principal may later carry a platform-level `PLATFORM_OPERATOR` role for
+restricted administrative paths.
 
 `MEMBER`, `ORGANIZER`, `PROVIDER_STAFF`, and `PROVIDER_ADMIN` are not global
 identity claims. The application resolves them from active membership records
