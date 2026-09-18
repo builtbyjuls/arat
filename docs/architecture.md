@@ -119,6 +119,15 @@ See [ADR-0002](adr/0002-postgresql-coordination.md).
 
 Modules communicate through explicit module APIs and domain events. They must not query another module's tables directly.
 
+The direct children of `com.builtbyjuls.arat` that contain production code are
+business modules, except `platform` and the current transitional `web` package.
+`web` contains shared HTTP support and has the same technical-support role as
+`platform` until it is renamed. A business module may reference another
+business module only through its `api` package. The `platform` and `web`
+technical-support packages must not reference business modules. Architecture
+tests enforce these rules and require business-module dependency slices to be
+cycle-free.
+
 ```mermaid
 flowchart TD
     Groups --> Identity
