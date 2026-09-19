@@ -204,7 +204,8 @@ because its transaction and locking behavior is part of the product.
 | Architecture baseline | Documented |
 | Application foundation | Implemented: runnable Spring Boot, local auth, health, metrics, Compose, and CI smoke checks |
 | Database schema and migrations | Implemented: Flyway baseline and PostgreSQL test foundation |
-| Planning and marketplace workflows | Not started |
+| Planning workflow | Implemented: collaborative plan creation with an initial requirement draft |
+| Marketplace workflows | Not started |
 | Billing simulation | Not started |
 | Concurrency evidence | Not started |
 | Performance measurements | Not started |

@@ -29,6 +29,44 @@ public class PlanRepository {
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
+    public Plan insertNew(
+            UUID planId,
+            UUID groupId,
+            String title,
+            UUID createdByAccountId,
+            RequirementDraft requirementDraft,
+            List<CandidateWindow> candidateWindows,
+            List<String> mustHaves) {
+        if (!planId.equals(requirementDraft.planId())) {
+            throw new IllegalArgumentException("requirement draft must belong to the plan");
+        }
+        validateCandidateWindows(planId, candidateWindows);
+        validateMustHaves(mustHaves);
+        var plan = jdbcClient.sql("""
+                        INSERT INTO planning_plan (
+                            plan_id, group_id, title, state, created_by_account_id,
+                            version, created_at, updated_at
+                        )
+                        VALUES (
+                            :planId, :groupId, :title, 'COLLABORATING', :createdByAccountId,
+                            1, statement_timestamp(), statement_timestamp()
+                        )
+                        RETURNING plan_id, group_id, title, state, created_by_account_id,
+                                  version, created_at, updated_at
+                        """)
+                .param("planId", planId)
+                .param("groupId", groupId)
+                .param("title", title)
+                .param("createdByAccountId", createdByAccountId)
+                .query(this::mapPlan)
+                .single();
+        insertRequirementDraft(requirementDraft);
+        insertCandidateWindows(planId, candidateWindows);
+        replaceMustHaves(planId, mustHaves);
+        return plan;
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
     public void insert(Plan plan, RequirementDraft requirementDraft, List<CandidateWindow> candidateWindows, List<String> mustHaves) {
         if (!plan.planId().equals(requirementDraft.planId())) {
             throw new IllegalArgumentException("requirement draft must belong to the plan");
