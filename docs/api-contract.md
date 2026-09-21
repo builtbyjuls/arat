@@ -322,6 +322,26 @@ If-Match: "plan-version"
 This is full replacement. Every replacement advances the plan version and makes
 older preferences stale without deleting or rewriting member input.
 
+### Cancel a collaborative plan
+
+~~~http
+POST /api/v1/plans/{planId}/cancellation
+Idempotency-Key: ...
+If-Match: "plan-version"
+~~~
+
+Only an active organizer can cancel a plan. In M1, cancellation is terminal
+and is accepted only from `COLLABORATING`. It advances the plan version while
+preserving the private requirement draft and preferences for authorized read
+history. An exact completed replay returns its original response and ETag
+before checking the now-current plan version. A new command with a stale ETag
+returns `412`; a new command with the current cancelled-plan ETag returns
+`409 INVALID_PLAN_STATE`.
+
+Later milestones extend plan cancellation to published requests, offers, and
+matches. Those records do not exist in M1, so this endpoint does not create
+provider cascades or notification delivery.
+
 ### Read or set a member preference
 
 ~~~http

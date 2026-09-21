@@ -194,6 +194,25 @@ public class PlanRepository {
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
+    public Optional<Plan> cancelVersioned(UUID planId, long expectedVersion) {
+        return jdbcClient.sql("""
+                        UPDATE planning_plan
+                        SET state = 'CANCELLED',
+                            version = version + 1,
+                            updated_at = statement_timestamp()
+                        WHERE plan_id = :planId
+                          AND version = :expectedVersion
+                          AND state = 'COLLABORATING'
+                        RETURNING plan_id, group_id, title, state, created_by_account_id,
+                                  version, created_at, updated_at
+                        """)
+                .param("planId", planId)
+                .param("expectedVersion", expectedVersion)
+                .query(this::mapPlan)
+                .optional();
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
     public Optional<Plan> replaceRequirementDraftVersioned(
             UUID planId, long expectedVersion, String title, RequirementDraft requirementDraft) {
         if (!planId.equals(requirementDraft.planId())) {
