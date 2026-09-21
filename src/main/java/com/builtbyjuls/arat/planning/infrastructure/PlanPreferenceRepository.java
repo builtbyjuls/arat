@@ -57,6 +57,60 @@ public class PlanPreferenceRepository {
         return inserted.map(row -> withCollections(row, preference.selectedWindowIds(), preference.rankedPreferences()));
     }
 
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Optional<PlanPreference> lock(UUID planId, UUID accountId) {
+        return jdbcClient.sql(baseSelect() + " WHERE p.plan_id = :planId AND p.account_id = :accountId FOR UPDATE OF p")
+                .param("planId", planId)
+                .param("accountId", accountId)
+                .query(this::mapPreference)
+                .optional();
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Optional<PlanPreference> replace(PlanPreference preference) {
+        var updated = jdbcClient.sql("""
+                        UPDATE planning_plan_preference
+                        SET basis_plan_version = :basisPlanVersion,
+                            attendance = :attendance,
+                            guest_count = :guestCount,
+                            personal_budget_currency = :personalBudgetCurrency,
+                            personal_budget_minor_units = :personalBudgetMinorUnits,
+                            private_note = :privateNote,
+                            version = version + 1,
+                            updated_at = statement_timestamp()
+                        WHERE plan_id = :planId
+                          AND account_id = :accountId
+                          AND version = :expectedVersion
+                        RETURNING plan_id, account_id, basis_plan_version, attendance, guest_count,
+                                  personal_budget_minor_units, private_note, version, created_at, updated_at
+                        """)
+                .param("planId", preference.planId())
+                .param("accountId", preference.accountId())
+                .param("basisPlanVersion", preference.basisPlanVersion())
+                .param("attendance", preference.attendance().name())
+                .param("guestCount", preference.guestCount())
+                .param("personalBudgetCurrency", preference.personalBudgetMinorUnits() == null ? null : "PHP")
+                .param("personalBudgetMinorUnits", preference.personalBudgetMinorUnits())
+                .param("privateNote", preference.privateNote())
+                .param("expectedVersion", preference.version())
+                .query(this::mapPreferenceWithoutCollections)
+                .optional();
+        if (updated.isEmpty()) {
+            return Optional.empty();
+        }
+        jdbcClient.sql("DELETE FROM planning_preference_selected_window WHERE plan_id = :planId AND account_id = :accountId")
+                .param("planId", preference.planId())
+                .param("accountId", preference.accountId())
+                .update();
+        jdbcClient.sql("DELETE FROM planning_preference_ranked_item WHERE plan_id = :planId AND account_id = :accountId")
+                .param("planId", preference.planId())
+                .param("accountId", preference.accountId())
+                .update();
+        replaceSelectedWindows(preference);
+        replaceRankedPreferences(preference);
+        return updated.map(row -> withCollections(row, preference.selectedWindowIds(), preference.rankedPreferences()));
+    }
+
     @Transactional(readOnly = true)
     public Optional<PlanPreference> find(UUID planId, UUID accountId) {
         return query(planId, accountId).optional();

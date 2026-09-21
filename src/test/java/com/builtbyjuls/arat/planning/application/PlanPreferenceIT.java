@@ -2,6 +2,7 @@ package com.builtbyjuls.arat.planning.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.doAnswer;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -10,17 +11,31 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.builtbyjuls.arat.PostgreSqlIntegrationTest;
+import com.builtbyjuls.arat.groups.api.MembershipExitException;
+import com.builtbyjuls.arat.groups.api.RemoveGroupMemberCommand;
+import com.builtbyjuls.arat.groups.application.MembershipExitService;
+import com.builtbyjuls.arat.groups.api.GroupMembershipAccess;
+import com.builtbyjuls.arat.groups.infrastructure.GroupRepository;
 import com.builtbyjuls.arat.identity.api.AuthenticatedActor;
 import com.builtbyjuls.arat.planning.api.CreatePreferenceCommand;
 import com.builtbyjuls.arat.planning.api.CreatePreferenceRequest;
 import com.builtbyjuls.arat.planning.api.PreferenceException;
 import com.builtbyjuls.arat.planning.api.PreferenceRepresentation;
+import com.builtbyjuls.arat.planning.api.ReplacePreferenceCommand;
+import com.builtbyjuls.arat.planning.api.ReplaceRequirementsCommand;
+import com.builtbyjuls.arat.planning.api.RequirementReplacementException;
+import com.builtbyjuls.arat.planning.api.RequirementReplacementRequest;
+import com.builtbyjuls.arat.planning.api.RequirementRepresentation;
 import com.builtbyjuls.arat.planning.domain.Attendance;
+import com.builtbyjuls.arat.planning.domain.ActivityCategory;
 import com.builtbyjuls.arat.web.CorrelationIdFilter;
+import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
@@ -30,6 +45,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.test.util.AopTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -55,10 +72,15 @@ class PlanPreferenceIT extends PostgreSqlIntegrationTest {
     @Autowired private CorrelationIdFilter correlationIdFilter;
     @Autowired private JdbcClient jdbcClient;
     @Autowired private PlanPreferenceService preferenceService;
+    @Autowired private RequirementReplacementService requirementReplacementService;
+    @Autowired private MembershipExitService membershipExitService;
+    @MockitoSpyBean private GroupMembershipAccess groupMembershipAccess;
+    @MockitoSpyBean private GroupRepository groupRepository;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
+        jdbcClient.sql("DELETE FROM idempotency_record").update();
         jdbcClient.sql("DELETE FROM audit_event").update();
         jdbcClient.sql("DELETE FROM planning_preference_ranked_item").update();
         jdbcClient.sql("DELETE FROM planning_preference_selected_window").update();
@@ -156,6 +178,50 @@ class PlanPreferenceIT extends PostgreSqlIntegrationTest {
     }
 
     @Test
+    void replacesEveryPreferenceFieldWithItsEtagWithoutChangingThePlanEtag() throws Exception {
+        putAs(MEMBER_ID, PLAN_ID, "*", preference(WINDOW_ID)).andExpect(status().isCreated());
+        var replacement = preference(WINDOW_ID)
+                .replace("\"attendance\":\"JOINING\"", "\"attendance\":\"AVAILABLE\"")
+                .replace("\"guestCount\":1", "\"guestCount\":2")
+                .replace("\"amount\":\"500.00\"", "\"amount\":\"750.00\"")
+                .replace("[\"indoor court\",\"parking\"]", "[\"air conditioning\"]")
+                .replace("I can bring equipment.", "Updated preference.");
+
+        putAs(MEMBER_ID, PLAN_ID, null, "\"1\"", replacement)
+                .andExpect(status().isOk())
+                .andExpect(header().string("ETag", "\"2\""))
+                .andExpect(header().doesNotExist("Location"))
+                .andExpect(jsonPath("$.attendance").value("AVAILABLE"))
+                .andExpect(jsonPath("$.guestCount").value(2))
+                .andExpect(jsonPath("$.personalBudget.amount").value("750.00"))
+                .andExpect(jsonPath("$.rankedPreferences[0]").value("air conditioning"))
+                .andExpect(jsonPath("$.privateNote").value("Updated preference."));
+        getAs(MEMBER_ID, "/api/v1/plans/{planId}/members/me/preference", PLAN_ID)
+                .andExpect(status().isOk()).andExpect(header().string("ETag", "\"2\""));
+        getAs(MEMBER_ID, "/api/v1/plans/{planId}", PLAN_ID)
+                .andExpect(status().isOk()).andExpect(header().string("ETag", "\"1\""));
+        assertThat(count("SELECT count(*) FROM planning_preference_ranked_item")).isOne();
+    }
+
+    @Test
+    void rejectsMissingMalformedDualStaleAndWrongResourceReplacementPreconditions() throws Exception {
+        putAs(MEMBER_ID, PLAN_ID, null, null, preference(WINDOW_ID))
+                .andExpect(status().isPreconditionRequired()).andExpect(jsonPath("$.code").value("PRECONDITION_REQUIRED"));
+        putAs(MEMBER_ID, PLAN_ID, null, "1", preference(WINDOW_ID))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_PRECONDITION"));
+        putAs(MEMBER_ID, PLAN_ID, "*", "\"1\"", preference(WINDOW_ID))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_PRECONDITION"));
+        putAs(MEMBER_ID, PLAN_ID, null, "\"1\"", preference(WINDOW_ID))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("PREFERENCE_NOT_FOUND"));
+        putAs(MEMBER_ID, PLAN_ID, "*", preference(WINDOW_ID)).andExpect(status().isCreated());
+        putAs(MEMBER_ID, PLAN_ID, "*", preference(WINDOW_ID))
+                .andExpect(status().isPreconditionFailed()).andExpect(jsonPath("$.code").value("PRECONDITION_FAILED"));
+        putAs(MEMBER_ID, PLAN_ID, null, "\"2\"", preference(WINDOW_ID))
+                .andExpect(status().isPreconditionFailed()).andExpect(jsonPath("$.code").value("PRECONDITION_FAILED"));
+        assertThat(count("SELECT count(*) FROM planning_plan_preference")).isOne();
+    }
+
+    @Test
     void rejectsRetiredUnknownCrossPlanStaleCancelledAndNonMemberAccess() throws Exception {
         for (var window : List.of(RETIRED_WINDOW_ID, SECOND_WINDOW_ID, UUID.randomUUID())) {
             putAs(MEMBER_ID, PLAN_ID, "*", preference(window)).andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
@@ -233,18 +299,146 @@ class PlanPreferenceIT extends PostgreSqlIntegrationTest {
     }
 
     @Test
+    void concurrentReplacementsWithOneEtagHaveOneWinner() throws Exception {
+        putAs(MEMBER_ID, PLAN_ID, "*", preference(WINDOW_ID)).andExpect(status().isCreated());
+        var barrier = new CyclicBarrier(2);
+        var command = replaceCommand(MEMBER_ID, "Concurrent preference.");
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var outcomes = List.of(
+                    executor.submit(() -> replaceAfterBarrier(command, barrier)),
+                    executor.submit(() -> replaceAfterBarrier(command, barrier)));
+            var results = List.of(outcomes.getFirst().get(10, TimeUnit.SECONDS), outcomes.getLast().get(10, TimeUnit.SECONDS));
+            assertThat(results.stream().filter(PreferenceRepresentation.class::isInstance)).hasSize(1);
+            assertThat(results.stream().filter(PreferenceException.class::isInstance)
+                    .map(PreferenceException.class::cast).map(PreferenceException::reason))
+                    .containsExactly(PreferenceException.Reason.PRECONDITION_FAILED);
+        }
+        assertThat(count("SELECT version FROM planning_plan_preference WHERE plan_id = :windowId", PLAN_ID)).isEqualTo(2);
+        assertThat(count("SELECT version FROM planning_plan WHERE plan_id = :windowId", PLAN_ID)).isOne();
+    }
+
+    @Test
+    void preferenceReplacementBeforeRequirementReplacementPreservesItsOldBasis() throws Exception {
+        putAs(MEMBER_ID, PLAN_ID, "*", preference(WINDOW_ID)).andExpect(status().isCreated());
+        var preferenceGroupLocked = new CountDownLatch(1);
+        var allowPreference = new CountDownLatch(1);
+        pausePreferenceAfterGroupLock(preferenceGroupLocked, allowPreference);
+        try (var preferenceExecutor = Executors.newSingleThreadExecutor(Thread.ofPlatform().name("preference-replacement").factory());
+                var requirementExecutor = Executors.newSingleThreadExecutor(Thread.ofPlatform().name("requirement-replacement").factory())) {
+            var preference = preferenceExecutor.submit(() -> preferenceService.replace(replaceCommand(MEMBER_ID, "Concurrent basis preference.")));
+            await(preferenceGroupLocked);
+            var requirement = requirementExecutor.submit(() -> requirementReplacementService.replace(requirementReplacementCommand()));
+            allowPreference.countDown();
+            assertThat(preference.get(10, TimeUnit.SECONDS).version()).isEqualTo(2);
+            assertThat(requirement.get(10, TimeUnit.SECONDS).title()).isEqualTo("Changed preference plan");
+        }
+        assertThat(count("SELECT version FROM planning_plan WHERE plan_id = :windowId", PLAN_ID)).isEqualTo(2);
+        assertThat(count("SELECT basis_plan_version FROM planning_plan_preference WHERE plan_id = :windowId", PLAN_ID)).isOne();
+        assertThat(jdbcClient.sql("""
+                        SELECT count(*)
+                        FROM planning_preference_selected_window
+                        WHERE plan_id = :planId
+                          AND candidate_window_id = :candidateWindowId
+                        """)
+                .param("planId", PLAN_ID)
+                .param("candidateWindowId", WINDOW_ID)
+                .query(Long.class)
+                .single()).isOne();
+        getAs(ORGANIZER_ID, "/api/v1/plans/{planId}/preferences", PLAN_ID)
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].current").value(false));
+    }
+
+    @Test
+    void requirementReplacementBeforePreferenceReplacementRejectsTheStaleBasis() throws Exception {
+        putAs(MEMBER_ID, PLAN_ID, "*", preference(WINDOW_ID)).andExpect(status().isCreated());
+        var requirementGroupLocked = new CountDownLatch(1);
+        var allowRequirement = new CountDownLatch(1);
+        pauseRequirementAfterGroupLock(requirementGroupLocked, allowRequirement);
+        try (var requirementExecutor = Executors.newSingleThreadExecutor(Thread.ofPlatform().name("requirement-replacement").factory());
+                var preferenceExecutor = Executors.newSingleThreadExecutor(Thread.ofPlatform().name("preference-replacement").factory())) {
+            var requirement = requirementExecutor.submit(() -> requirementReplacementService.replace(requirementReplacementCommand()));
+            await(requirementGroupLocked);
+            var preference = preferenceExecutor.submit(() -> replacePreferenceOrReturnFailure(replaceCommand(MEMBER_ID, "Concurrent basis preference.")));
+            allowRequirement.countDown();
+            assertThat(requirement.get(10, TimeUnit.SECONDS).title()).isEqualTo("Changed preference plan");
+            assertThat(preference.get(10, TimeUnit.SECONDS)).isInstanceOf(PreferenceException.class)
+                    .extracting(PreferenceException.class::cast)
+                    .extracting(PreferenceException::reason)
+                    .isEqualTo(PreferenceException.Reason.REQUIREMENT_VERSION_CHANGED);
+        }
+        assertThat(count("SELECT version FROM planning_plan WHERE plan_id = :windowId", PLAN_ID)).isEqualTo(2);
+        assertThat(count("SELECT version FROM planning_plan_preference WHERE plan_id = :windowId", PLAN_ID)).isOne();
+    }
+
+    @Test
+    void preferenceReplacementBeforeMembershipRemovalCommitsEveryReplacementField() throws Exception {
+        putAs(MEMBER_ID, PLAN_ID, "*", preference(WINDOW_ID)).andExpect(status().isCreated());
+        var preferenceGroupLocked = new CountDownLatch(1);
+        var allowPreference = new CountDownLatch(1);
+        pausePreferenceAfterGroupLock(preferenceGroupLocked, allowPreference);
+        try (var preferenceExecutor = Executors.newSingleThreadExecutor(Thread.ofPlatform().name("preference-replacement").factory());
+                var removalExecutor = Executors.newSingleThreadExecutor(Thread.ofPlatform().name("membership-removal").factory())) {
+            var preference = preferenceExecutor.submit(() -> preferenceService.replace(replaceCommand(MEMBER_ID, "Membership race preference.")));
+            await(preferenceGroupLocked);
+            var removal = removalExecutor.submit(this::removeMember);
+            allowPreference.countDown();
+            assertThat(preference.get(10, TimeUnit.SECONDS).version()).isEqualTo(2);
+            assertThat(removal.get(10, TimeUnit.SECONDS)).isNotBlank();
+        }
+        assertThat(count("SELECT count(*) FROM group_membership WHERE group_id = :windowId AND account_id = :accountId AND status = 'REMOVED'", GROUP_ID, MEMBER_ID)).isOne();
+        assertThat(count("SELECT version FROM planning_plan_preference WHERE plan_id = :windowId", PLAN_ID)).isEqualTo(2);
+        assertThat(count("SELECT guest_count FROM planning_plan_preference WHERE plan_id = :windowId", PLAN_ID)).isEqualTo(2);
+        assertThat(count("SELECT personal_budget_minor_units FROM planning_plan_preference WHERE plan_id = :windowId", PLAN_ID)).isEqualTo(75000);
+        assertThat(count("SELECT count(*) FROM planning_preference_ranked_item WHERE plan_id = :windowId", PLAN_ID)).isOne();
+    }
+
+    @Test
+    void membershipRemovalBeforePreferenceReplacementRejectsWithoutChangingThePreference() throws Exception {
+        putAs(MEMBER_ID, PLAN_ID, "*", preference(WINDOW_ID)).andExpect(status().isCreated());
+        var removalGroupLocked = new CountDownLatch(1);
+        var allowRemoval = new CountDownLatch(1);
+        pauseRemovalAfterGroupLock(removalGroupLocked, allowRemoval);
+        try (var removalExecutor = Executors.newSingleThreadExecutor(Thread.ofPlatform().name("membership-removal").factory());
+                var preferenceExecutor = Executors.newSingleThreadExecutor(Thread.ofPlatform().name("preference-replacement").factory())) {
+            var removal = removalExecutor.submit(this::removeMember);
+            await(removalGroupLocked);
+            var preference = preferenceExecutor.submit(() -> replacePreferenceOrReturnFailure(replaceCommand(MEMBER_ID, "Membership race preference.")));
+            allowRemoval.countDown();
+            assertThat(removal.get(10, TimeUnit.SECONDS)).isNotBlank();
+            assertThat(preference.get(10, TimeUnit.SECONDS)).isInstanceOf(PreferenceException.class)
+                    .extracting(PreferenceException.class::cast)
+                    .extracting(PreferenceException::reason)
+                    .isEqualTo(PreferenceException.Reason.PRIVATE_RESOURCE_NOT_FOUND);
+        }
+        assertThat(count("SELECT count(*) FROM group_membership WHERE group_id = :windowId AND account_id = :accountId AND status = 'REMOVED'", GROUP_ID, MEMBER_ID)).isOne();
+        assertThat(count("SELECT version FROM planning_plan_preference WHERE plan_id = :windowId", PLAN_ID)).isOne();
+        assertThat(count("SELECT guest_count FROM planning_plan_preference WHERE plan_id = :windowId", PLAN_ID)).isOne();
+        assertThat(count("SELECT personal_budget_minor_units FROM planning_plan_preference WHERE plan_id = :windowId", PLAN_ID)).isEqualTo(50000);
+        assertThat(count("SELECT count(*) FROM planning_preference_ranked_item WHERE plan_id = :windowId", PLAN_ID)).isEqualTo(2);
+    }
+
+    @Test
     void publishesPreferenceContractInOpenApi() throws Exception {
         mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk())
-                .andExpect(jsonPath("$.paths['/api/v1/plans/{planId}/members/me/preference'].put.operationId").value("createMemberPreference"))
-                .andExpect(jsonPath("$.paths['/api/v1/plans/{planId}/members/me/preference'].put.parameters[?(@.name == 'If-None-Match')].required").value(true))
+                .andExpect(jsonPath("$.paths['/api/v1/plans/{planId}/members/me/preference'].put.operationId").value("putMemberPreference"))
+                .andExpect(jsonPath("$.paths['/api/v1/plans/{planId}/members/me/preference'].put.parameters[?(@.name == 'If-None-Match')]").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/plans/{planId}/members/me/preference'].put.parameters[?(@.name == 'If-Match')]").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/plans/{planId}/members/me/preference'].put.responses['200']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/plans/{planId}/members/me/preference'].put.responses['412']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/plans/{planId}/members/me/preference'].put.responses['428']").exists())
                 .andExpect(jsonPath("$.paths['/api/v1/plans/{planId}/preferences'].get.operationId").value("listPlanPreferences"))
                 .andExpect(jsonPath("$.components.schemas.CreatePreferenceRequest.properties.basisPlanVersion").exists());
     }
 
     private ResultActions putAs(UUID actorId, UUID planId, String ifNoneMatch, String body) throws Exception {
+        return putAs(actorId, planId, ifNoneMatch, null, body);
+    }
+
+    private ResultActions putAs(UUID actorId, UUID planId, String ifNoneMatch, String ifMatch, String body) throws Exception {
         var request = put("/api/v1/plans/{planId}/members/me/preference", planId).with(authentication(new org.springframework.security.authentication.TestingAuthenticationToken(new AuthenticatedActor(actorId, Set.of()), null, "ROLE_USER")))
                 .contentType(org.springframework.http.MediaType.APPLICATION_JSON).content(body).header(CorrelationIdFilter.HEADER_NAME, "preference-test");
         if (ifNoneMatch != null) request.header("If-None-Match", ifNoneMatch);
+        if (ifMatch != null) request.header("If-Match", ifMatch);
         return mockMvc.perform(request);
     }
 
@@ -292,6 +486,79 @@ class PlanPreferenceIT extends PostgreSqlIntegrationTest {
         try { return preferenceService.create(command); } catch (PreferenceException exception) { return exception; }
     }
 
+    private ReplacePreferenceCommand replaceCommand(UUID actorId, String privateNote) {
+        return new ReplacePreferenceCommand(actorId, PLAN_ID, 1,
+                new CreatePreferenceRequest(1L, Attendance.AVAILABLE, 2, List.of(WINDOW_ID),
+                        new CreatePreferenceRequest.PersonalBudgetRequest("PHP", "750.00"),
+                        List.of("air conditioning"), privateNote));
+    }
+
+    private Object replaceAfterBarrier(ReplacePreferenceCommand command, CyclicBarrier barrier) throws Exception {
+        barrier.await(10, TimeUnit.SECONDS);
+        try { return preferenceService.replace(command); } catch (PreferenceException exception) { return exception; }
+    }
+
+    private void pausePreferenceAfterGroupLock(CountDownLatch groupLocked, CountDownLatch allowContinuation) {
+        doAnswer(invocation -> {
+            var result = invocation.callRealMethod();
+            if (Thread.currentThread().getName().equals("preference-replacement")) {
+                groupLocked.countDown();
+                await(allowContinuation);
+            }
+            return result;
+        }).when(AopTestUtils.<GroupMembershipAccess>getTargetObject(groupMembershipAccess))
+                .lockAndHasActiveMembership(GROUP_ID, MEMBER_ID);
+    }
+
+    private void pauseRequirementAfterGroupLock(CountDownLatch groupLocked, CountDownLatch allowContinuation) {
+        pauseGroupLockForThread("requirement-replacement", groupLocked, allowContinuation);
+    }
+
+    private void pauseRemovalAfterGroupLock(CountDownLatch groupLocked, CountDownLatch allowContinuation) {
+        pauseGroupLockForThread("membership-removal", groupLocked, allowContinuation);
+    }
+
+    private void pauseGroupLockForThread(String threadName, CountDownLatch groupLocked, CountDownLatch allowContinuation) {
+        doAnswer(invocation -> {
+            var result = invocation.callRealMethod();
+            if (Thread.currentThread().getName().equals(threadName)) {
+                groupLocked.countDown();
+                await(allowContinuation);
+            }
+            return result;
+        }).when(AopTestUtils.<GroupRepository>getTargetObject(groupRepository)).findAndLockGroup(GROUP_ID);
+    }
+
+    private void await(CountDownLatch latch) throws InterruptedException {
+        if (!latch.await(10, TimeUnit.SECONDS)) {
+            throw new AssertionError("Timed out waiting for the transaction lock boundary.");
+        }
+    }
+
+    private Object replacePreferenceOrReturnFailure(ReplacePreferenceCommand command) {
+        try {
+            return preferenceService.replace(command);
+        } catch (PreferenceException exception) {
+            return exception;
+        }
+    }
+
+    private String removeMember() {
+        return membershipExitService.remove(new RemoveGroupMemberCommand(
+                ORGANIZER_ID, GROUP_ID, MEMBER_ID, "preference-membership-race", "preference-race-test"));
+    }
+
+    private ReplaceRequirementsCommand requirementReplacementCommand() {
+        return new ReplaceRequirementsCommand(ORGANIZER_ID, PLAN_ID, 1,
+                new RequirementReplacementRequest("Changed preference plan", ActivityCategory.COURT, "Asia/Manila",
+                        List.of(new RequirementReplacementRequest.CandidateWindowRequest(WINDOW_ID,
+                                OffsetDateTime.parse("2027-01-09T09:30:00Z"), OffsetDateTime.parse("2027-01-09T11:30:00Z"))),
+                        new com.builtbyjuls.arat.planning.api.CreatePlanRequest.AreaRequest("BGC", 5),
+                        new com.builtbyjuls.arat.planning.api.CreatePlanRequest.HeadcountRequest(4, 10),
+                        null, List.of(), null, Map.of()),
+                "preference-race-test");
+    }
+
     private void insertPlan(UUID planId, UUID activeWindowId, UUID retiredWindowId) {
         jdbcClient.sql("INSERT INTO planning_plan (plan_id, group_id, title, state, created_by_account_id, version) VALUES (:planId, :groupId, 'Preference plan', 'COLLABORATING', :organizer, 1)").param("planId", planId).param("groupId", GROUP_ID).param("organizer", ORGANIZER_ID).update();
         jdbcClient.sql("INSERT INTO planning_requirement_draft (plan_id, category, time_zone, area_code, radius_km, minimum_headcount, maximum_headcount, category_attributes) VALUES (:planId, 'COURT', 'Asia/Manila', 'BGC', 5, 4, 10, '{}'::jsonb)").param("planId", planId).update();
@@ -302,6 +569,7 @@ class PlanPreferenceIT extends PostgreSqlIntegrationTest {
     private long count(String sql, UUID... windowId) {
         var query = jdbcClient.sql(sql);
         if (windowId.length > 0) query.param("windowId", windowId[0]);
+        if (windowId.length > 1) query.param("accountId", windowId[1]);
         return query.query(Long.class).single();
     }
 }

@@ -5,6 +5,7 @@ import com.builtbyjuls.arat.planning.api.CreatePreferenceCommand;
 import com.builtbyjuls.arat.planning.api.PreferenceCollectionRepresentation;
 import com.builtbyjuls.arat.planning.api.PreferenceException;
 import com.builtbyjuls.arat.planning.api.PreferenceRepresentation;
+import com.builtbyjuls.arat.planning.api.ReplacePreferenceCommand;
 import com.builtbyjuls.arat.planning.domain.PlanPreference;
 import com.builtbyjuls.arat.planning.domain.PlanState;
 import com.builtbyjuls.arat.planning.infrastructure.PlanPreferenceRepository;
@@ -58,6 +59,40 @@ public class PlanPreferenceService {
         var inserted = preferenceRepository.insert(preference)
                 .orElseThrow(() -> failure(PreferenceException.Reason.PRECONDITION_FAILED));
         return PreferenceRepresentation.from(inserted);
+    }
+
+    @Transactional
+    public PreferenceRepresentation replace(ReplacePreferenceCommand command) {
+        if (command.request().basisPlanVersion() == null || command.request().basisPlanVersion() < 1) {
+            throw failure(PreferenceException.Reason.VALIDATION_FAILED);
+        }
+        var groupId = planRepository.findGroupId(command.planId())
+                .orElseThrow(() -> failure(PreferenceException.Reason.PRIVATE_RESOURCE_NOT_FOUND));
+        requireActiveMembership(groupId, command.actorId());
+        var plan = planRepository.lockPlan(command.planId());
+        var existing = preferenceRepository.lock(command.planId(), command.actorId())
+                .orElseThrow(() -> failure(PreferenceException.Reason.PREFERENCE_NOT_FOUND));
+        if (plan.state() != PlanState.COLLABORATING) {
+            throw failure(PreferenceException.Reason.INVALID_PLAN_STATE);
+        }
+        if (existing.version() != command.expectedPreferenceVersion()) {
+            throw failure(PreferenceException.Reason.PRECONDITION_FAILED);
+        }
+        if (plan.version() != command.request().basisPlanVersion()) {
+            throw failure(PreferenceException.Reason.REQUIREMENT_VERSION_CHANGED);
+        }
+        var selectedWindowIds = new java.util.LinkedHashSet<>(command.request().selectedWindowIds());
+        if (!planRepository.hasActiveCandidateWindows(command.planId(), selectedWindowIds)) {
+            throw failure(PreferenceException.Reason.VALIDATION_FAILED);
+        }
+        var replacement = new PlanPreference(
+                command.planId(), command.actorId(), command.request().basisPlanVersion(), command.request().attendance(),
+                command.request().guestCount(),
+                command.request().personalBudget() == null ? null : command.request().personalBudget().minorUnits(),
+                command.request().selectedWindowIds(), command.request().rankedPreferences(), command.request().privateNote(),
+                existing.version(), existing.createdAt(), null);
+        return PreferenceRepresentation.from(preferenceRepository.replace(replacement)
+                .orElseThrow(() -> failure(PreferenceException.Reason.PRECONDITION_FAILED)));
     }
 
     @Transactional

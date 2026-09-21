@@ -25,9 +25,9 @@ class PreferenceProblemAdvice {
     void preconditionFailure(PreferencePreconditionException exception, HttpServletRequest request, HttpServletResponse response) throws IOException {
         switch (exception.reason()) {
             case PRECONDITION_REQUIRED -> write(request, response, HttpStatus.PRECONDITION_REQUIRED,
-                    "PRECONDITION_REQUIRED", "Precondition required", "The If-None-Match header is required.");
+                    "PRECONDITION_REQUIRED", "Precondition required", "Exactly one of If-None-Match or If-Match is required.");
             case INVALID_PRECONDITION -> write(request, response, HttpStatus.BAD_REQUEST,
-                    "INVALID_PRECONDITION", "Invalid precondition", "The If-None-Match header must be *.");
+                    "INVALID_PRECONDITION", "Invalid precondition", "Use If-None-Match: * or If-Match with a quoted positive integer, but not both.");
         }
     }
 
@@ -39,11 +39,11 @@ class PreferenceProblemAdvice {
             case PREFERENCE_NOT_FOUND -> write(request, response, HttpStatus.NOT_FOUND,
                     "PREFERENCE_NOT_FOUND", "Preference not found", "No preference exists for this member on the plan.");
             case PRECONDITION_FAILED -> write(request, response, HttpStatus.PRECONDITION_FAILED,
-                    "PRECONDITION_FAILED", "Precondition failed", "A preference already exists for this member on the plan.");
+                    "PRECONDITION_FAILED", "Precondition failed", "The preference no longer matches its supplied precondition.");
             case REQUIREMENT_VERSION_CHANGED -> write(request, response, HttpStatus.CONFLICT,
                     "REQUIREMENT_VERSION_CHANGED", "Requirement version changed", "The supplied basisPlanVersion no longer matches the plan.");
             case INVALID_PLAN_STATE -> write(request, response, HttpStatus.CONFLICT,
-                    "INVALID_PLAN_STATE", "Invalid plan state", "Preferences can be created only while collaborating.");
+                    "INVALID_PLAN_STATE", "Invalid plan state", "Preferences can be changed only while collaborating.");
             case VALIDATION_FAILED -> write(request, response, HttpStatus.UNPROCESSABLE_ENTITY,
                     "VALIDATION_FAILED", "Validation failed", "One or more fields are invalid.");
         }

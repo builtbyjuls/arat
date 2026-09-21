@@ -41,30 +41,42 @@ public class PreferenceController {
     }
 
     @PutMapping("/{planId}/members/me/preference")
-    @Operation(operationId = "createMemberPreference", summary = "Create a member preference")
+    @Operation(
+            operationId = "putMemberPreference",
+            summary = "Create or replace a member preference",
+            description = "Use exactly one precondition: If-None-Match: * for creation or If-Match with the quoted preference ETag for replacement.")
     @SecurityRequirement(name = "bearerAuth")
     @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Preference replaced", headers = @Header(name = "ETag", description = "New preference version"), content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = PreferenceRepresentation.class))),
         @ApiResponse(responseCode = "201", description = "Preference created", headers = @Header(name = "ETag", description = "Current preference version"), content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = PreferenceRepresentation.class))),
         @ApiResponse(responseCode = "400", description = "Malformed request or precondition", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
         @ApiResponse(responseCode = "401", description = "Authentication required", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
         @ApiResponse(responseCode = "404", description = "Private resource not found", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
         @ApiResponse(responseCode = "409", description = "Plan state or requirement version changed", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
-        @ApiResponse(responseCode = "412", description = "Preference already exists", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "412", description = "Preference version precondition failed", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
         @ApiResponse(responseCode = "422", description = "Validation failed", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
-        @ApiResponse(responseCode = "428", description = "Create precondition required", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class)))
+        @ApiResponse(responseCode = "428", description = "Exactly one preference precondition required", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class)))
     })
     public ResponseEntity<PreferenceRepresentation> create(
             @PathVariable UUID planId,
             @Valid @RequestBody CreatePreferenceRequest request,
-            @Parameter(name = "If-None-Match", in = ParameterIn.HEADER, required = true)
-            @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
-        PreferencePrecondition.requireIfNoneMatchStar(ifNoneMatch);
+            @Parameter(name = "If-None-Match", description = "Use * only when creating a preference.", in = ParameterIn.HEADER)
+            @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch,
+            @Parameter(name = "If-Match", description = "Use the quoted preference ETag only when replacing a preference.", in = ParameterIn.HEADER)
+            @RequestHeader(value = "If-Match", required = false) String ifMatch) {
+        var precondition = PreferencePrecondition.parse(ifNoneMatch, ifMatch);
         var actor = currentActor.requireAuthenticatedActor();
-        var preference = preferenceService.create(new CreatePreferenceCommand(actor.accountId(), planId, request));
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .eTag(PlanCreationService.etag(preference.version()))
-                .header("Location", "/api/v1/plans/" + planId + "/members/me/preference")
-                .body(preference);
+        var preference = precondition.isCreate()
+                ? preferenceService.create(new CreatePreferenceCommand(actor.accountId(), planId, request))
+                : preferenceService.replace(new ReplacePreferenceCommand(actor.accountId(), planId, precondition.expectedPreferenceVersion(), request));
+        return precondition.isCreate()
+                ? ResponseEntity.status(HttpStatus.CREATED)
+                        .eTag(PlanCreationService.etag(preference.version()))
+                        .header("Location", "/api/v1/plans/" + planId + "/members/me/preference")
+                        .body(preference)
+                : ResponseEntity.ok()
+                        .eTag(PlanCreationService.etag(preference.version()))
+                        .body(preference);
     }
 
     @GetMapping("/{planId}/members/me/preference")
