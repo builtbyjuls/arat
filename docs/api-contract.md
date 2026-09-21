@@ -2,12 +2,11 @@
 
 ## Status
 
-This document defines the planned HTTP contract at resource and behavior
-level. Release 1 is request-first; later-extension sections are labeled
-explicitly. This is not an implemented OpenAPI specification.
-
-The implementation milestone will create an executable OpenAPI document and
-contract tests from these decisions.
+This document defines the HTTP contract at resource and behavior level. The
+Milestone 1 collaboration routes and problem-envelope codes are implemented
+and exposed as executable OpenAPI at `/v3/api-docs`; their component test is
+`MilestoneOneJourneyIT`. Release 1 is request-first; later-extension sections
+remain planned and are labeled explicitly.
 
 ## Principles
 
@@ -61,10 +60,9 @@ Production identity-provider integration is out of scope.
 
 ## Milestone 1 collaboration contract
 
-This section is the authoritative planned contract for Phase 1 private group
-collaboration. It is not an implemented OpenAPI specification. Requirement
-finalization and provider publication begin in Phase 2; Phase 1 creates and
-edits a private collaboration draft only.
+This section is the authoritative implemented contract for Phase 1 private
+group collaboration. Requirement finalization and provider publication begin
+in Phase 2; Phase 1 creates and edits a private collaboration draft only.
 
 ### Headers, retries, and errors
 

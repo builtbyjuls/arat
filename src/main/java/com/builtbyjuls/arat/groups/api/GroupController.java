@@ -122,7 +122,7 @@ public class GroupController {
                     @Header(name = "ETag", description = "Current group version"),
                     @Header(name = "Location", description = "Created group location")
                 },
-                content = @Content(schema = @Schema(implementation = GroupRepresentation.class))),
+                content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = GroupRepresentation.class))),
         @ApiResponse(
                 responseCode = "400",
                 description = "Missing or malformed request",
@@ -164,7 +164,7 @@ public class GroupController {
                 responseCode = "201",
                 description = "Invitation created",
                 headers = @Header(name = "Location", description = "Created invitation location"),
-                content = @Content(schema = @Schema(implementation = InvitationRepresentation.class))),
+                content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = InvitationRepresentation.class))),
         @ApiResponse(responseCode = "400", description = "Missing or malformed request", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
         @ApiResponse(responseCode = "401", description = "Authentication required", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
         @ApiResponse(responseCode = "403", description = "Organizer role required", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
@@ -198,7 +198,8 @@ public class GroupController {
         @ApiResponse(responseCode = "401", description = "Authentication required", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
         @ApiResponse(responseCode = "403", description = "Organizer role required", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
         @ApiResponse(responseCode = "404", description = "Private resource or invitation unavailable", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
-        @ApiResponse(responseCode = "409", description = "Idempotency key reused", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class)))
+        @ApiResponse(responseCode = "409", description = "Idempotency key reused", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "422", description = "Validation failed", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class)))
     })
     public ResponseEntity<Void> revokeInvitation(
             @PathVariable UUID groupId,
@@ -264,7 +265,7 @@ public class GroupController {
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "Organizer authority transferred",
                 headers = @Header(name = "ETag", description = "New group version"),
-                content = @Content(schema = @Schema(implementation = OrganizerTransferRepresentation.class))),
+                content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = OrganizerTransferRepresentation.class))),
         @ApiResponse(responseCode = "400", description = "Malformed precondition or request", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
         @ApiResponse(responseCode = "401", description = "Authentication required", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
         @ApiResponse(responseCode = "403", description = "Organizer role required", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),

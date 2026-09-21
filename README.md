@@ -1,6 +1,6 @@
 # Arat?
 
-Arat? is a planned group-first marketplace for casual outings in the
+Arat? is a group-first marketplace for casual outings in the
 Philippines.
 
 An existing barkada, work team, family, or club agrees on when it is available,
@@ -204,10 +204,10 @@ because its transaction and locking behavior is part of the product.
 | Architecture baseline | Documented |
 | Application foundation | Implemented: runnable Spring Boot, local auth, health, metrics, Compose, and CI smoke checks |
 | Database schema and migrations | Implemented: Flyway baseline and PostgreSQL test foundation |
-| Planning workflow | Implemented: collaborative plan creation with an initial requirement draft |
+| Planning workflow | Implemented: private groups, invitations, collaborative plans, requirement replacement, member preferences, and cancellation |
 | Marketplace workflows | Not started |
 | Billing simulation | Not started |
-| Concurrency evidence | Not started |
+| Concurrency evidence | Implemented for M1 collaboration; marketplace concurrency work remains planned |
 | Performance measurements | Not started |
 
 No benchmark results are published because no reproducible benchmark has been
@@ -263,6 +263,25 @@ Use `arat-local-member-token` or `arat-local-outsider-token` to select the other
 fixed local accounts. The tokens and probe are unavailable outside the `local` profile. The `prod`
 profile cannot be combined with `local` or `compose`. Stop the host application
 with `Ctrl+C`, then stop the database with `docker compose stop postgres`.
+
+### Milestone 1 collaboration journey
+
+The PostgreSQL-backed M1 journey uses the three local fake accounts through
+their public HTTP bearer-token boundary. It creates a private group, accepts an
+account-bound invitation, creates and revises a badminton plan, records member
+preferences, proves private-plan isolation, and cancels the plan while keeping
+authorized reads available. It also verifies idempotent replays, stale ETags,
+audit records, and the executable OpenAPI contract.
+
+Run it from a clean checkout with Docker available:
+
+~~~bash
+./mvnw verify -Dit.test=MilestoneOneJourneyIT
+~~~
+
+The test starts PostgreSQL through Testcontainers, applies Flyway migrations,
+and starts the application test context. It needs no AWS account, Floci, Redis,
+Kafka, external email service, or paid service.
 
 ### Full Compose stack
 

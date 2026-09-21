@@ -48,7 +48,10 @@ public class PreferenceController {
     @SecurityRequirement(name = "bearerAuth")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "Preference replaced", headers = @Header(name = "ETag", description = "New preference version"), content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = PreferenceRepresentation.class))),
-        @ApiResponse(responseCode = "201", description = "Preference created", headers = @Header(name = "ETag", description = "Current preference version"), content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = PreferenceRepresentation.class))),
+        @ApiResponse(responseCode = "201", description = "Preference created", headers = {
+            @Header(name = "ETag", description = "Current preference version"),
+            @Header(name = "Location", description = "Created preference location")
+        }, content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = PreferenceRepresentation.class))),
         @ApiResponse(responseCode = "400", description = "Malformed request or precondition", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
         @ApiResponse(responseCode = "401", description = "Authentication required", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
         @ApiResponse(responseCode = "404", description = "Private resource not found", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
