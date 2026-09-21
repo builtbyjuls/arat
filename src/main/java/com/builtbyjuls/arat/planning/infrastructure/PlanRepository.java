@@ -152,6 +152,14 @@ public class PlanRepository {
         return plan;
     }
 
+    @Transactional(readOnly = true)
+    public Optional<UUID> findGroupId(UUID planId) {
+        return jdbcClient.sql("SELECT group_id FROM planning_plan WHERE plan_id = :planId")
+                .param("planId", planId)
+                .query(UUID.class)
+                .optional();
+    }
+
     @Transactional(propagation = Propagation.MANDATORY)
     public Plan lockPlan(UUID planId) {
         return jdbcClient.sql("""
