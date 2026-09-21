@@ -27,16 +27,18 @@ public class OpenApiConfiguration {
     @Bean
     OpenApiCustomizer planCreationRequestSchema() {
         return openApi -> {
-            var request = openApi.getComponents().getSchemas().get("CreatePlanRequest");
-            if (request == null) {
-                return;
+            for (var schemaName : java.util.List.of("CreatePlanRequest", "RequirementReplacementRequest")) {
+                var request = openApi.getComponents().getSchemas().get(schemaName);
+                if (request == null) {
+                    continue;
+                }
+                var categoryAttributes = (Schema<?>) request.getProperties().get("categoryAttributes");
+                categoryAttributes.setPropertyNames(new StringSchema().pattern("[a-z][A-Za-z0-9]{0,39}"));
+                categoryAttributes.setAdditionalProperties(new Schema<>().oneOf(java.util.List.of(
+                        new BooleanSchema(),
+                        new IntegerSchema().minimum(new java.math.BigDecimal("0")).maximum(new java.math.BigDecimal("1000000")),
+                        new StringSchema().minLength(1).maxLength(120))));
             }
-            var categoryAttributes = (Schema<?>) request.getProperties().get("categoryAttributes");
-            categoryAttributes.setPropertyNames(new StringSchema().pattern("[a-z][A-Za-z0-9]{0,39}"));
-            categoryAttributes.setAdditionalProperties(new Schema<>().oneOf(java.util.List.of(
-                    new BooleanSchema(),
-                    new IntegerSchema().minimum(new java.math.BigDecimal("0")).maximum(new java.math.BigDecimal("1000000")),
-                    new StringSchema().minLength(1).maxLength(120))));
         };
     }
 }

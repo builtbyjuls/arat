@@ -338,6 +338,25 @@ public class PlanRepository {
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
+    public boolean hasActiveCandidateWindows(UUID planId, Set<UUID> candidateWindowIds) {
+        if (candidateWindowIds.isEmpty()) {
+            return true;
+        }
+        var count = jdbcClient.sql("""
+                        SELECT count(*)
+                        FROM planning_candidate_window
+                        WHERE plan_id = :planId
+                          AND retired_at IS NULL
+                          AND candidate_window_id = ANY(:candidateWindowIds)
+                        """)
+                .param("planId", planId)
+                .param("candidateWindowIds", candidateWindowIds.toArray(UUID[]::new))
+                .query(Long.class)
+                .single();
+        return count == candidateWindowIds.size();
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
     public void replaceMustHaves(UUID planId, List<String> mustHaves) {
         validateMustHaves(mustHaves);
         jdbcClient.sql("DELETE FROM planning_requirement_must_have WHERE plan_id = :planId")

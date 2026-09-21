@@ -1,6 +1,7 @@
 package com.builtbyjuls.arat.groups.api;
 
 import com.builtbyjuls.arat.groups.infrastructure.GroupRepository;
+import com.builtbyjuls.arat.groups.domain.MembershipRole;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
@@ -23,6 +24,23 @@ public class GroupMembershipAccess {
         if (groupRepository.findAndLockGroup(groupId).isEmpty()) {
             return false;
         }
+        return groupRepository.findActiveMembership(groupId, accountId).isPresent();
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public boolean lockGroup(UUID groupId) {
+        return groupRepository.findAndLockGroup(groupId).isPresent();
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public boolean hasActiveOrganizer(UUID groupId, UUID accountId) {
+        return groupRepository.findActiveMembership(groupId, accountId)
+                .map(membership -> membership.role() == MembershipRole.ORGANIZER)
+                .orElse(false);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public boolean hasActiveMembership(UUID groupId, UUID accountId) {
         return groupRepository.findActiveMembership(groupId, accountId).isPresent();
     }
 }
