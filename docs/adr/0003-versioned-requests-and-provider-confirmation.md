@@ -69,16 +69,40 @@ Costs:
 
 Arat? will use immutable, versioned published requests and explicit provider confirmation.
 
-### Published requests
+### Published requests (M2, planned)
 
-- Publishing captures a provider-visible snapshot of the current plan.
+- Planning finalizes one active window, deadline, and provider-publishable terms
+  from the locked plan version. This immutable resource does not change plan
+  state or version. Preferences remain advisory counts/warnings, never automatic
+  headcount, budget, or schedule changes.
+- Publishing accepts only a same-plan finalization based on the locked current
+  plan version and a still-future database deadline. The offer deadline must be
+  strictly before the chosen start.
+- Publishing captures an allowlist copy of that finalization, excluding private
+  group, plan-title, identity, preference, attendance, employer, and contact
+  fields. Provider-safe notes, must-haves, and string attributes are deliberately
+  publishable text without automatic PII detection or redaction.
 - `(plan_id, version)` is unique and version numbers increase monotonically per plan.
 - At most one version is current.
-- Material changes create a new version and supersede the previous one.
-- Old versions remain readable for audit.
+- Requirements and preferences remain editable privately in OPEN_FOR_OFFERS;
+  N stays current until direct publication of N+1 atomically supersedes it.
+  There is no close-first gap and no in-place audience expansion.
+- Snapshot fields and ordered children are immutable in PostgreSQL. Lifecycle
+  changes use guarded commands; M2 creates OPEN, SUPERSEDED, CLOSED, CANCELLED.
+- Closure and cancellation clear the plan's same-plan current pointer and retain
+  history. In M2 the pointer exists only in OPEN_FOR_OFFERS.
+- Old versions remain readable only under current authorization. Provider
+  access requires active staff, VERIFIED, ACTIVE recipient, and captured/current
+  eligibility equality; suspension followed by restoration never revives access.
+- Finalization/publication replay reconstructs immutable resources using compact
+  references, original status/headers, and small fixed-shape metadata only. It
+  supports maximum valid multibyte content and sensitive-looking valid attribute
+  keys without changing the generic 16 KB limit or sensitive-key guard.
+  Publication replay returns the original OPEN representation even after a
+  terminal lifecycle change.
 - Offers against a superseded version cannot be selected.
 
-### Offers
+### Offers (M3, planned)
 
 - Every offer references exactly one published request version.
 - Price, schedule, capacity, inclusions, conditions, and expiration are sealed at submission.
@@ -86,7 +110,7 @@ Arat? will use immutable, versioned published requests and explicit provider con
 - A provider changes terms by submitting a new immutable offer revision that supersedes the prior submitted revision.
 - Listing-first and request-first discovery both produce this same offer model.
 
-### Selection and match
+### Selection and match (M3, planned; notification delivery in M4)
 
 - Group votes are advisory.
 - Only the organizer selects an offer in the MVP.

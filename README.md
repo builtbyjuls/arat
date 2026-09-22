@@ -17,7 +17,10 @@ documents describe the evidence required before making performance or
 scalability claims beyond the implemented foundation.
 
 Current stage: M1 is complete. M2, versioned provider requests and recipient
-privacy, is next. See the [Project Roadmap](docs/roadmap.md).
+privacy, is next. M2 will finalize organizer-selected terms, publish immutable
+requests to fixed verified-provider audiences, authorize reads, and capture
+notification intent in PostgreSQL. Offers and matches begin in M3; outbox relay
+and notification delivery begin in M4. See the [Project Roadmap](docs/roadmap.md).
 
 ## Why this project exists
 
@@ -98,8 +101,10 @@ boundaries, and executable integration and concurrency tests.
 ## Architecture summary
 
 Arat? starts as a modular monolith. PostgreSQL owns authoritative workflow
-state and concurrency coordination. A transactional outbox separates committed
-domain changes from asynchronous provider and group notifications.
+state and concurrency coordination. A planned transactional outbox separates
+committed domain changes from asynchronous provider and group notifications. M2 adds
+capture only; the relay, queue, and notification components below are M4 target
+design, not implemented delivery.
 
 ~~~mermaid
 flowchart LR
@@ -186,10 +191,11 @@ stack also runs the application and Prometheus.
 | Prometheus | Managed Prometheus or selected CloudWatch metrics |
 | Local configuration | Parameter Store and Secrets Manager |
 
-Floci is intentionally limited to SQS when messaging exists. It is absent from
-the M0 stack because no outbox, queue adapter, or consumer exists yet. Mailpit
-is likewise absent until email delivery exists. PostgreSQL runs directly
-because its transaction and locking behavior is part of the product.
+Floci is intentionally limited to SQS and its DLQ beginning in M4. It remains
+absent through M2's planned PostgreSQL-only outbox capture; that milestone has
+no AWS SDK, relay, inbox, SMTP, email rendering, delivery retries, or DLQ
+behavior. Mailpit likewise begins with M4 email delivery. PostgreSQL runs
+directly because its transaction and locking behavior is part of the product.
 
 ## Documentation map
 

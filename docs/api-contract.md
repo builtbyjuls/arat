@@ -49,9 +49,10 @@ exclude `prod`.
 The principal may later carry a platform-level `PLATFORM_OPERATOR` role for
 restricted administrative paths.
 
-`MEMBER`, `ORGANIZER`, `PROVIDER_STAFF`, and `PROVIDER_ADMIN` are not global
-identity claims. The application resolves them from active membership records
-for the specific group or provider organization named by the resource.
+`MEMBER` and `ORGANIZER`, and provider staff roles `ADMIN` and `STAFF`, are
+not global identity claims. The application resolves them from active
+membership records for the specific group or provider organization named by
+the resource.
 
 A caller-provided member or provider ID never replaces authorization from the
 authenticated principal plus the relevant active membership.
@@ -400,11 +401,98 @@ is checked before plan state. Therefore a pre-cancellation ETag returns 412;
 a new key with the current cancelled-plan ETag reaches state validation and
 returns 409.
 
-## Phase 2 planning extension
+## Milestone 2 provider-request contract (planned)
 
-The provider-request, offer, and match workflows described below are planned
-later-phase behavior. Their records and cancellation cascades do not exist
-during M1.
+M2 ends at immutable request publication and authorized access. It captures
+notification intent in PostgreSQL but adds no relay, AWS SDK, SQS, Floci,
+inbox, SMTP, email rendering, delivery retries, or DLQ behavior. Offers, votes,
+selection, provider confirmation, and matches begin in M3; delivery begins in
+M4. Listings, direct invitations, billing, advanced trust tooling, geospatial
+search, and cloud deployment remain deferred.
+
+### Command headers and replay
+
+Every M2 command that creates a durable transition requires `Idempotency-Key`:
+provider creation, verification submission and decision, suspension,
+restoration, finalization, publication, closure, and plan cancellation.
+Full replacements use `If-Match` without an additional command key unless they
+also create a separate resource. Provider profile replacement uses the provider
+ETag; finalization, publication, closure, and cancellation use the plan ETag.
+ETags and error handling retain the quoted-integer M1 contract.
+
+Authentication and the idempotency claim precede group, plan, and request locks.
+Exact completed replay returns the original status, representation, ETag, and
+Location before current ETag and state validation. The canonical fingerprint
+includes route identifiers, validated body, and any supplied resource version.
+Changing finalization ID, plan ID, or supplied plan version under the same
+publication key returns `409 IDEMPOTENCY_KEY_REUSED`.
+
+Finalization and publication store their immutable resource ID in the existing
+idempotency resource reference, the original status and allowlisted headers,
+and only small fixed-shape metadata when reconstruction needs it. They never
+store their full response JSON in `ReplayState`. Exact replay reloads the
+immutable finalization or request snapshot and reconstructs the original
+representation. Publication replay returns its original `OPEN` result even
+when current lifecycle metadata is `SUPERSEDED`, `CLOSED`, or `CANCELLED`.
+
+M1's maximum valid multibyte strings can exceed the generic 16 KB replay bound.
+Valid attribute keys may contain `token`, `secret`, `authorization`, `password`,
+or `cookie`. Both kinds of input must finalize, publish, and replay normally.
+Do not raise that bound, weaken sensitive-key detection, or special-case
+arbitrary category-attribute keys in the generic idempotency component.
+
+### Provider identity and profile
+
+~~~http
+POST /api/v1/providers
+Idempotency-Key: ...
+~~~
+
+~~~json
+{
+  "displayName": "BGC Courts",
+  "supportedCategories": ["COURT"],
+  "serviceAreaCodes": ["BGC"]
+}
+~~~
+
+Creation atomically creates one provider in `UNVERIFIED` and one `ACTIVE`
+`ADMIN` staff membership for the authenticated creator. Display name is trimmed
+and 1-120 characters. Categories are a unique set of 1-10 M1 values (`COURT`,
+`KTV`, `GROUP_DINING`; currently only three distinct values exist). Area codes
+are a unique set of 1-20 trimmed strings of 1-64 characters.
+
+~~~http
+GET /api/v1/providers/{providerId}
+PUT /api/v1/providers/{providerId}/profile
+If-Match: "provider-version"
+~~~
+
+Active `ADMIN` or `STAFF` members may read their provider. `ADMIN` replaces the
+profile using the create body shape; category and area collections are full
+replacements. The provider version advances, but eligibility version does not.
+Edits affect future matching and never rewrite an existing recipient grant.
+Provider context is always explicit in the route. A global platform role never
+implies provider membership. M2 adds no staff invitation or removal endpoints;
+tests may insert staff rows as fixtures.
+
+Service-area codes are configured opaque identifiers matched by exact value.
+The request radius is provider-visible context, not a distance calculation.
+
+### Verification and eligibility
+
+Only `VERIFIED` providers are eligible. An active provider `ADMIN` may submit
+from `UNVERIFIED` or `REJECTED`. Submission carries 1-10 unique printable ASCII
+opaque evidence references, each 1-256 characters. Evidence is referenced, not
+uploaded, and is never returned to request recipients.
+
+`PLATFORM_OPERATOR` may accept or reject `PENDING`, suspend `VERIFIED`, and
+restore `SUSPENDED` to `VERIFIED`. Decision notes are optional and at most 500
+characters; suspension requires a trimmed reason of 1-500 characters. The
+[operations routes](#operations-apis) use an idempotency key for each command.
+Every actual verification-state transition increments provider version and
+monotonic eligibility version exactly once. Exact replay increments neither.
+Restoration never restores a prior eligibility version.
 
 ### Finalize requirements
 
@@ -414,19 +502,35 @@ Idempotency-Key: ...
 If-Match: "plan-version"
 ~~~
 
-The response contains the calculated headcount range, compatible time windows,
-budget range, and unresolved warnings. Finalization does not publish anything.
+~~~json
+{
+  "candidateWindowId": "active-candidate-window-uuid",
+  "offerDeadline": "2027-01-08T10:00:00Z"
+}
+~~~
 
-### Deferred command idempotency
+The organizer chooses one active candidate window. Under the plan lock,
+finalization copies its values and all provider-publishable requirement fields
+into an immutable resource with the current plan version as its basis.
+It is allowed in `COLLABORATING` and `OPEN_FOR_OFFERS`, does not publish or
+change plan state, and does not increment plan version. PostgreSQL decision
+time requires a future offer deadline strictly before the selected start.
 
-After M1, `Idempotency-Key` is also required to finalize requirements; publish,
-close, or cancel a provider request; submit or withdraw an offer; select an
-offer; confirm, decline, complete, or cancel a match; start or change a
-simulated subscription; and submit or decide provider verification or apply a
-provider restriction. The operation still identifies route semantics within the
-actor, operation, and key scope.
+The response identifies the finalization and basis plan version, copied terms,
+and bounded aggregate counts of current and stale submitted preferences, with
+warnings such as no current preference input or stale input present.
+Preferences are advisory; finalization never silently changes organizer
+headcount, budget, schedule, or other terms. A later requirement replacement
+advances plan version and makes the finalization stale.
 
-## Provider-request APIs (Phase 2)
+### Edit while a request is open
+
+M2 allows requirement and preference writes in both `COLLABORATING` and
+`OPEN_FOR_OFFERS`, using their existing M1 authority and version preconditions.
+They affect private draft and preference state only. Editing never mutates or
+closes current request N. The organizer can finalize and publish N+1 directly;
+N remains current until that replacement transaction commits. No close-first
+gap is required.
 
 ### Publish a requirement
 
@@ -436,60 +540,131 @@ Idempotency-Key: ...
 If-Match: "plan-version"
 ~~~
 
-The server creates an immutable provider-visible snapshot with:
+~~~json
+{"finalizationId": "finalization-uuid"}
+~~~
 
-- Version number
-- Category
-- Broad area or radius
-- Date and time window
-- Headcount range
-- Budget range
-- Must-have requirements
-- Offer deadline
+Publication requires a same-plan finalization whose basis version equals the
+locked current plan version and whose offer deadline remains in the future by
+PostgreSQL decision time. It allocates the next monotonically increasing request
+version and publishes `MATCHED_POOL`. Matching selects distinct `VERIFIED`
+provider IDs whose supported categories contain the request category and whose
+service-area codes contain the exact area code, ordered by provider UUID
+ascending, with the eligibility version observed by the query. Deduplication
+precedes the cap: default 100, externally configurable from 1 through 500.
+Zero candidates or more than the configured cap rejects the whole publication;
+no domain state changes and no truncated audience is published.
 
-Private member details and exact workplace or home location are excluded.
+The provider-visible representation uses an explicit allowlist:
 
-### Read request status
+- Request ID, request version, publication time, lifecycle state, and effective
+  actionable flag
+- Category, time zone, area code and radius
+- Chosen start and end instants, headcount range, optional PHP budget range
+- Ordered must-haves, category attributes, optional `providerSafeNotes`, and
+  offer deadline
+
+It excludes group ID and name, plan title, creator and member identities,
+preferences, attendance, private notes, employer, and direct contact fields.
+`providerSafeNotes`, must-haves, and string category attributes are deliberately
+publishable organizer-authored text. The system does not promise automatic PII
+detection or redaction of that text. M1 field bounds still apply; no private
+entity is serialized wholesale.
+
+The snapshot and ordered child content are immutable in PostgreSQL. Guarded
+commands alone change lifecycle metadata. One plan has at most one current
+`OPEN` or (from M3) `SELECTION_PENDING` request; M2 creates only `OPEN`,
+`SUPERSEDED`, `CLOSED`, and `CANCELLED`. In M2 the plan holds a same-plan current
+request reference only while `OPEN_FOR_OFFERS`; closure or cancellation clears
+it and retains history.
+
+Request, plan transition, fixed `MATCH_RULE` recipients with captured eligibility
+versions, audit, idempotency completion, and all outbox rows commit together.
+Replacement first marks N `SUPERSEDED` and non-actionable, then installs N+1
+and its new fixed audience in the same transaction. Audiences never expand in
+place. Per-recipient publication and terminal events contain no private fields;
+see the [outbox contract](consistency-and-concurrency.md#9-outbox-and-consumer-idempotency).
+
+### Group reads and closure
 
 ~~~http
 GET /api/v1/plans/{planId}/published-requests/current
-~~~
-
-### Close a request
-
-~~~http
+GET /api/v1/plans/{planId}/published-requests?cursor=...&limit=...
 POST /api/v1/published-requests/{requestId}/closure
 Idempotency-Key: ...
 If-Match: "plan-version"
 ~~~
 
-Closure is atomic: the request becomes `CLOSED`, every remaining `SUBMITTED`
-offer for that request becomes `NOT_SELECTED`, and the plan returns to
-`COLLABORATING` when no match has been confirmed. Manual closure is accepted
-only while the request is `OPEN`; a pending selection is ended through the
-match-cancellation endpoint.
+Active group members may read current requests and bounded history. Outsiders
+receive `404 PRIVATE_RESOURCE_NOT_FOUND`. History uses opaque versioned cursors,
+default limit 20 and maximum 100, in descending request-version order for the
+named plan. Manual closure requires organizer authority and an `OPEN` request;
+it marks it `CLOSED`, clears the current pointer, returns the plan to
+`COLLABORATING`, advances plan version, and preserves history atomically.
 
-### Provider request feed
+M2 extends the existing plan-cancellation route to `OPEN_FOR_OFFERS`, marking
+its current request `CANCELLED` and clearing the pointer in the same transaction.
+Marketplace owns this request-aware route transaction and delegates plan and
+request state changes to Planning, avoiding a Planning-to-Marketplace cycle.
+Offer and match cascades begin in M3.
 
-~~~http
-GET /api/v1/providers/{providerId}/request-feed?category=COURT&area=...&cursor=...
-~~~
-
-The server returns only requests that provider organization is authorized and
-eligible to view. The authenticated account must have active staff membership
-in `{providerId}`. Provider context is explicit because one account may work
-for more than one provider organization. The feed does not expose competing
-offers.
-
-## Provider APIs
-
-### Create or update provider profile
+### Provider request detail and feed
 
 ~~~http
-POST /api/v1/providers
-PATCH /api/v1/providers/{providerId}
-If-Match: "provider-version"
+GET /api/v1/providers/{providerId}/published-requests/{requestId}
+GET /api/v1/providers/{providerId}/request-feed?cursor=...&limit=...
 ~~~
+
+Access requires active staff membership in the explicit provider context,
+current provider `VERIFIED` state, an `ACTIVE` recipient, and equality between
+stored and current eligibility versions. Cross-provider, non-recipient, revoked,
+unverified, suspended, or stale-eligibility reads return the same private-resource
+not-found response; they do not disclose resource existence. Restoration never
+revives an old grant. Authorized detail may return a terminal historical snapshot.
+
+Feed order is recipient `created_at DESC`, then request ID descending. Cursors
+are opaque, versioned, and bound to provider ID. Limit defaults to 20 and may
+not exceed 100. M2 has no category or area filters: recipients already matched
+those criteria, and cross-module filtering would corrupt recipient-owned
+pagination. Authorization is applied before the cursor page is limited, never
+by filtering a recipient-owned page afterward.
+
+The feed may include authorized terminal history and returns lifecycle state
+plus an effective actionable flag. It is true only for a current `OPEN` request
+before its offer deadline by database time with valid access. M2 has no expiry
+worker; delayed cleanup cannot make an expired request actionable.
+
+### M2 command outcomes and stable problems
+
+All entries are planned. Common malformed syntax and authentication outcomes
+remain 400 and 401. Required missing, malformed, and stale version preconditions
+return 428 `PRECONDITION_REQUIRED`, 400 `INVALID_PRECONDITION`, and 412
+`PRECONDITION_FAILED`. Validation failures use 422 `VALIDATION_FAILED`;
+changed input under a used key uses 409 `IDEMPOTENCY_KEY_REUSED`.
+
+| Command | Success | Authorization and domain failures |
+| --- | --- | --- |
+| Create provider | 201 with provider ETag and Location | 422 validation; 409 key reuse |
+| Read provider | 200 with provider ETag | Missing provider or inactive staff: 404 `PRIVATE_RESOURCE_NOT_FOUND` |
+| Replace profile | 200 with new provider ETag | Inactive staff: 404 private resource; active non-admin: 403 `FORBIDDEN_ROLE`; precondition errors |
+| Submit verification | 200 with new provider ETag | Inactive staff: 404 private resource; non-admin: 403 `FORBIDDEN_ROLE`; wrong source state: 409 `INVALID_PROVIDER_STATE` |
+| Decide, suspend, restore provider | 200 with new provider ETag | Missing operator role: 403 `FORBIDDEN_PLATFORM_ROLE`; missing target: 404 private resource; wrong source state: 409 `INVALID_PROVIDER_STATE` |
+| Finalize requirements | 201 with Location and unchanged plan ETag | Outsider: 404 private resource; non-organizer: 403 `FORBIDDEN_ROLE`; disallowed plan state: 409 `INVALID_PLAN_STATE`; invalid window or deadline: 422 validation |
+| Publish or replace request | 201 with Location and new plan ETag | Outsider or foreign finalization: 404 private resource; non-organizer: 403 `FORBIDDEN_ROLE`; plan state: 409 `INVALID_PLAN_STATE`; stale finalization: 409 `FINALIZATION_VERSION_CHANGED`; zero matches: 409 `NO_ELIGIBLE_PROVIDERS`; excessive audience: 409 `RECIPIENT_LIMIT_EXCEEDED`; elapsed deadline: 409 `REQUEST_DEADLINE_EXPIRED` |
+| Read current request or history | 200 | Outsider, absent plan, or absent current request: 404 private resource; bad cursor: 400 `INVALID_CURSOR` |
+| Provider detail or feed | 200 | Invisible provider/request or stale eligibility: 404 `PRIVATE_RESOURCE_NOT_FOUND`; malformed or wrong-provider cursor: 400 `INVALID_CURSOR` |
+| Close request | 200 with new plan ETag | Outsider: 404 private resource; non-organizer: 403 `FORBIDDEN_ROLE`; non-OPEN request: 409 `INVALID_REQUEST_STATE`; precondition errors |
+| Cancel plan | 200 with new plan ETag | Outsider: 404 private resource; non-organizer: 403 `FORBIDDEN_ROLE`; disallowed state: 409 `INVALID_PLAN_STATE`; precondition errors |
+
+For new plan commands, ETag checks precede current plan-state checks under the
+lock; exact completed replay precedes both. Failed publication changes no
+request, recipient, plan, audit, outbox, or idempotency state.
+
+### Later command idempotency
+
+M3 also requires command keys for offer submission and withdrawal, selection,
+and match confirmation, decline, completion, and cancellation. Simulated
+subscription commands use keys when that deferred extension exists.
 
 ## Listing APIs (listing extension)
 
@@ -541,7 +716,7 @@ This publishes a new `DIRECT_INVITATION` request version targeted only to the
 listing's provider. It supersedes any current request version for the plan; it
 does not add a provider to an existing matched-pool audience.
 
-## Offer APIs
+## Offer APIs (M3, planned)
 
 ### Submit an offer
 
@@ -615,7 +790,7 @@ may replace that vote while voting remains open. The first vote uses
 `If-None-Match: *`; a replacement uses `If-Match: "vote-version"`. Successful
 reads and writes return the current vote ETag.
 
-## Later-phase Match APIs
+## Match APIs (M3, planned)
 
 ### Select an offer
 
@@ -737,10 +912,10 @@ endpoint is exposed.
 
 Planned operational endpoints:
 
-- Outbox and inbox backlog summaries for authorized operators
-- Redrive command for a failed notification after operator review
+- M4 outbox and inbox backlog summaries for authorized operators
+- M4 redrive command for a failed notification after operator review
 
-Provider verification commands:
+Provider verification commands (M2, planned):
 
 ~~~http
 POST /api/v1/providers/{providerId}/verification-submissions
@@ -785,6 +960,7 @@ Cursors are opaque. Clients must not construct or interpret them.
 | 409 | Valid request conflicts with current domain state |
 | 412 | Version or first-write precondition failed |
 | 422 | Well-formed input violates validation rules |
+| 428 | Required version precondition is missing |
 | 429 | Rate or subscription usage limit reached |
 
 ## Contract-test expectations

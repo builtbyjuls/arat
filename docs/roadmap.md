@@ -79,13 +79,22 @@ Primary evidence:
 
 Outcome:
 
-- An organizer can publish an anonymized, immutable snapshot of finalized
-  requirements.
-- Verified and active providers are matched by category and service area.
+- An organizer can finalize one active window and provider-publishable terms
+  without deriving terms silently from advisory preferences, then publish an
+  immutable allowlisted snapshot of that finalization. Publishable free text
+  has no automatic PII detection or redaction guarantee.
+- Provider creation atomically grants its creator active ADMIN membership;
+  scoped staff profiles and operator verification maintain monotonic eligibility.
+- VERIFIED providers match by exact category and configured opaque area code;
+  radius is context only. Distinct providers are UUID-ordered before a bounded
+  cap (default 100, configurable 1-500); zero or excess rejects publication.
 - Only persisted request recipients can discover and read the provider-safe
   projection.
-- Material requirement changes create a new request version instead of editing
-  a published snapshot.
+- Private drafts and preferences remain editable while N is open. Finalizing
+  and directly publishing N+1 atomically supersedes N without a close-first gap.
+- Group history and provider detail/feed preserve privacy and eligibility
+  fencing, including after suspension/restoration. Closure and cancellation
+  clear the current pointer and preserve history.
 - The publication transaction records recipient notification work in a durable
   outbox; queue delivery remains disabled until M4.
 
@@ -94,8 +103,12 @@ publishing a replacement atomically supersedes the current request, provider
 suspension invalidates stale eligibility, and private group data never appears
 in provider responses. The same tests prove that request state, recipients, and
 their outbox rows commit or roll back together. Recipient selection remains
-synchronous and database-backed; queue delivery is not required for this
-milestone.
+synchronous and database-backed. M2 ends at publication and authorized access;
+it includes no relay, AWS SDK, SQS, Floci, inbox, SMTP, email rendering, retries,
+or DLQ behavior. Those delivery components begin in M4. Tests also prove real
+PostgreSQL provider-root/FK lock compatibility and compact resource-based replay
+of maximum multibyte snapshots with sensitive-looking valid attribute keys.
+M2 remains planned until that executable evidence is committed.
 
 ### M3: Offers, selection, and provider confirmation - Planned
 
@@ -146,10 +159,10 @@ must also contain:
 The following remain deliberately outside the core sequence until M3 or M4
 proves the underlying workflow:
 
-- provider listings and listing-first discovery;
+- provider listings, listing-first discovery, and direct invitations;
 - simulated Free and Pro provider subscriptions;
 - advanced operator cases, reports, and abuse controls;
-- cloud deployment; and
+- geospatial search and cloud deployment; and
 - recommendations, native mobile applications, real payments, public groups,
   chat, and multi-provider packages.
 

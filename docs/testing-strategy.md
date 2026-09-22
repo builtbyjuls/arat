@@ -8,7 +8,10 @@ This document defines the target testing strategy for the planned marketplace,
 messaging, billing, and load work. M1 group and planning correctness already
 have executable PostgreSQL evidence in `CollaborationRaceOutcomesIT`, while the
 HTTP journey and OpenAPI contract are covered by `MilestoneOneJourneyIT`.
-Those later suites and results remain planned.
+Those later suites and results remain planned. M2 is next: PostgreSQL-only
+publication, access, and outbox capture. M3 adds offers, votes, selection,
+confirmation, and matches. M4 adds relay, AWS SDK, SQS/Floci, inbox, SMTP, email
+rendering, delivery retries, and DLQ tests. No M2 test needs those M4 components.
 
 ## Quality goals
 
@@ -35,7 +38,7 @@ The test suite must provide evidence that:
 | Application | Check one use case through its application boundary | Spring test slice with controlled ports | Authorization, command handling, error mapping |
 | Database integration | Prove transactions, constraints, and SQL behavior | PostgreSQL Testcontainer plus Flyway | Offer selection, request versions, idempotency, quota ledger |
 | Messaging integration | Prove AWS SDK v2 interaction and delivery behavior | Floci Testcontainer with SQS and DLQ | Publish, receive, redelivery, visibility timeout, DLQ |
-| Component | Exercise the application through HTTP with real local dependencies | Application, PostgreSQL, Floci, Mailpit | Complete publish-to-match workflows |
+| Component | Exercise HTTP with real milestone dependencies | M1-M3: application and PostgreSQL; M4 adds Floci and Mailpit | Collaboration, publication, then publish-to-match and delivery journeys |
 | Load | Measure behavior and expose contention | k6 against the composed application | Browse traffic, offer bursts, hot selection, async backlog |
 
 H2 is not an acceptable substitute for PostgreSQL in tests involving transactions, row locking, partial indexes, exclusion constraints, JSON behavior, or concurrent updates. A test that proves an invariant only on H2 does not prove the application design.
@@ -66,6 +69,45 @@ The default build should run unit and integration tests. Component and load test
 - Do not use `Thread.sleep` to coordinate races. Use barriers, latches, futures, and bounded awaits.
 - Assert final database state and durable side effects, not the order in which threads happened to finish.
 - Give every asynchronous assertion a finite timeout and a useful failure message.
+
+## Milestone 2 contract and failure matrix (planned)
+
+These are acceptance requirements, not test results. Use PostgreSQL
+Testcontainers with the real Flyway migrations wherever database behavior
+matters, deterministic coordination, and separate competing connections.
+
+| Contract | Required test and durable evidence |
+| --- | --- |
+| Provider creation is atomic | Create and replay; inject a failure between organization and creator membership. Exactly one provider and one `ACTIVE ADMIN` membership commit, or neither does. |
+| Provider authority is scoped | Exercise `ADMIN`, `STAFF`, outsider, and operator-without-membership in explicit provider routes. Platform role grants no staff access. Tests may seed staff rows; no invitation/removal API is needed. |
+| Profile replacement is bounded | Test trimmed display name 1-120, unique categories from M1 with declared 1-10 bound, and 1-20 unique trimmed area codes of 1-64 characters; replacement uses provider ETag, increments provider version only, and preserves existing grants. |
+| Verification transitions fence grants | Cover UNVERIFIED/REJECTED to PENDING by ADMIN; PENDING acceptance/rejection, VERIFIED suspension, SUSPENDED restoration by operator. Each transition increments both versions once; exact replay increments neither. Invalid states and roles use documented errors. |
+| Evidence and reasons are bounded | Test 1-10 unique printable ASCII references of 1-256 characters, optional decision notes at most 500, trimmed suspension reason 1-500; references are never uploaded or exposed to request recipients. |
+| Matching is exact and bounded | Match VERIFIED providers by category and exact configured area code, deduplicate before UUID ordering and cap, capture observed eligibility version; radius never drives distance logic. Test zero, cap, cap+1, default 100, configured 1 and 500, and invalid configuration bounds. Zero/excess rejects with no domain writes. |
+| Finalization preserves organizer intent | Select one active same-plan window; copy its values and all publishable terms at the locked plan version. Reject retired/foreign windows and non-future or start-equal/later deadlines using PostgreSQL time. State/version do not change. |
+| Preferences remain advisory | Capture bounded counts of current/stale submissions and no-current/stale-input warnings; do not silently change headcount, budget, schedule, or other terms. |
+| Finalization freshness is enforced | Race finalization with requirement replacement using group then plan locks. Publish only the matching basis version; reject stale/foreign finalizations without partial state. |
+| Open-request edits stay private | Edit requirements and preferences in OPEN_FOR_OFFERS, finalize, and directly republish. N remains immutable/current until N+1 commits; cancellation rejects later writes. |
+| Snapshot allowlist is enforced | Assert exact provider response fields, excluding group ID/name, plan title, identities, preferences, attendance, private notes, employer and contacts. Deliberately publishable free text survives; tests must not assume automatic PII redaction. |
+| Database immutability is real | Attempt direct SQL changes to snapshot columns and insertion/update/deletion of ordered children after creation. Reject each; guarded lifecycle changes preserve content. |
+| Publication is one transaction | Inject failures after request insertion, superseding N, recipient insertion, audit, any outbox append, and before idempotency completion/commit. Request, plan pointer/version, recipients, audit, all events, and key records roll back together; N remains current on replacement failure. |
+| Outbox append joins its caller | Prove caller rollback removes appended rows, absence of a caller transaction is rejected, versioned envelope is immutable, and deterministic event business keys reject duplicates. There is no relay or delivery effect in M2. |
+| Publication/terminal fan-out is fixed | One published event per distinct new recipient; one corresponding superseded/closed/cancelled event per old recipient with documented business keys and no private fields. Audience never expands during recovery. |
+| Replay supports every valid snapshot | Finalize, publish, and replay maximum valid multibyte content exceeding 16 KB and valid attribute keys containing token, secret, authorization, password, and cookie. Replay state stays compact; generic limits/guards remain unchanged. |
+| Replay preserves original publication | Replay after supersession, closure, and cancellation; original status, headers, and OPEN representation return. Changed plan ID, finalization ID, or supplied plan version under the key returns 409. No extra rows/events appear. |
+| Competing publication has one winner | Race same-key exact publication and different-key publication with one ETag. Exact duplicates reconstruct one result; different keys yield one commit and one 412. No duplicate version or current pointer remains. |
+| Authority races serialize | Race publication with organizer transfer or membership removal. Group-root order permits a protected commit or rejects the later unauthorized write without domain changes. |
+| Eligibility fencing survives races | Pause publication after matching, suspend, and resume insert/commit; stale recipient cannot read. Restore and recheck: old grant remains denied. Profile edits affect only future matching. |
+| PostgreSQL root/FK locks are compatible | On separate connections, hold provider FOR NO KEY UPDATE while inserting a recipient FK, and hold recipient KEY SHARE while mutating provider non-key state. Assert real progress with bounded waits and lock diagnostics, not sleeps or a lock-matrix assumption. |
+| Reads preserve privacy | Active group member reads current/history; outsider gets private-resource 404. Provider requires active staff, VERIFIED, ACTIVE recipient, equal eligibility versions; wrong provider, non-recipient, revoked or stale grant never leaks existence. |
+| Feed pages are recipient-owned | Equal created-at timestamps use request-ID descending tie-break; opaque versioned cursor is provider-bound, limit defaults 20/max 100. No post-page filtering or category/area filters; authorized terminal history is retained. |
+| Database time controls actionability | Before/at/after offer deadline, the effective flag changes correctly even while stored state stays OPEN and no expiry worker runs. |
+| Closure/cancellation are atomic | Close only OPEN; clear pointer, return plan to COLLABORATING, preserve history. Cancel OPEN_FOR_OFFERS through existing route; request and plan become CANCELLED atomically. Race with replacement and assert one coherent ETag/state/event outcome. |
+| HTTP contract is complete | Cover every M2 problem code/status, privacy and role failure, ETag ordering, validation, and replay; journey from provider create/verify through publish, read, replace, close, and cancel. Executable OpenAPI arrives with implementation. |
+
+Run the normal `./mvnw clean verify` lane as the M2 implementation grows. This
+includes existing M0/M1 regression coverage. No offers, notification delivery,
+new fixtures, or executable OpenAPI changes are claimed by this contract alone.
 
 ## Invariant test matrix
 
@@ -131,7 +173,9 @@ Run critical concurrency tests repeatedly in CI. A useful repeat count is chosen
 
 ## Transaction and failure tests
 
-Use fault injection at explicit boundaries:
+M2 covers PostgreSQL transaction rollback and outbox capture only. SQS,
+consumer, retry, and email failure cases below begin in M4. Use fault injection
+at explicit boundaries:
 
 - before a transaction writes anything;
 - after domain rows are changed but before commit;
@@ -165,7 +209,7 @@ The integration suite should:
 
 Tests should assert database constraints by attempting the invalid write, not only by checking validation code.
 
-## SQS and Floci integration environment
+## SQS and Floci integration environment (M4, planned)
 
 Floci is used to exercise the AWS SDK v2 SQS adapter with a standard queue and DLQ. The suite should cover:
 
@@ -189,7 +233,9 @@ At the HTTP boundary, verify:
 - only the owning provider can submit, withdraw, or confirm its offer;
 - idempotency keys are scoped to the authenticated actor and command type;
 - pagination has stable ordering and cannot skip or duplicate items during ordinary updates;
-- provider views never expose member names, employer details, internal comments, or exact private locations;
+- provider projections exclude member identity, employer, private notes, and
+  contact fields; deliberately publishable organizer text is not automatically
+  inspected or redacted for PII;
 - audit endpoints cannot be edited through normal APIs.
 
 ## Load testing with k6
@@ -238,7 +284,7 @@ A target CI pipeline should enforce:
 1. compile and static checks;
 2. unit tests;
 3. Flyway validation and PostgreSQL integration tests;
-4. Floci SQS integration tests;
+4. Floci SQS integration tests from M4;
 5. component smoke test;
 6. build of the deployable container;
 7. scheduled or manually triggered k6 tests.

@@ -4,6 +4,14 @@ Status: Target design
 
 This document describes the intended architecture. It is not evidence that every component has been implemented or load tested. Test and performance results must be added only after they are reproduced.
 
+M2 is next and remains planned: provider identity/eligibility, immutable
+finalization and request publication, fixed recipients, authorized reads, and
+PostgreSQL outbox capture only. M3 adds offers, votes, selection, confirmation,
+and matches. M4 adds relay, AWS SDK/SQS/Floci, inbox, SMTP, email rendering,
+delivery retries, and DLQ behavior. Listings, direct invitations, billing,
+advanced trust tooling, geospatial search, and cloud deployment are deferred.
+The diagrams below show target architecture, not implemented M2 delivery.
+
 ## 1. Purpose
 
 Arat? is a group-first planning and provider-matching platform for casual outings. A group agrees on its schedule, headcount, budget, location, and requirements. The organizer can then publish an anonymized request to suitable providers. Providers submit sealed offers, group members vote, the organizer selects an offer, and the provider confirms or declines the match.
@@ -107,12 +115,12 @@ See [ADR-0002](adr/0002-postgresql-coordination.md).
 |---|---|---|
 | Identity | User accounts, authentication identity, platform-level roles, sessions | Group membership or provider employment |
 | Groups | Groups, memberships, invitations, organizer role | Plans, offers, provider profiles |
-| Planning | Plans, requirement drafts, candidate dates, attendance, preferences, published request versions | Provider offers, votes, or matches |
-| Marketplace | Request recipients, offers, offer votes, selection attempts, matches | Provider profile content or notification delivery |
-| Providers | Provider organizations, staff membership, listings, service areas, capabilities | Match state or provider subscription billing |
+| Planning | Plans, requirement drafts, candidate dates, attendance, preferences, immutable finalizations and request versions | Provider offers, votes, or matches |
+| Marketplace | Publication use case, request recipients, offers, offer votes, selection attempts, matches | Provider profile content or notification delivery |
+| Providers | Provider organizations, staff, verification, eligibility versions, service areas, capabilities; listings later | Match state or provider subscription billing |
 | Matching | Eligibility rules for selecting request recipients | Any durable business or delivery state |
 | Billing (extension) | Simulated subscriptions, entitlements, usage counters, and billing event inbox | Invoices, real payment instruments, or settlement |
-| Messaging | Transactional outbox, SQS envelopes, relay claims, and consumer inbox deduplication | Social chat or domain decisions |
+| Messaging | M2 outbox persistence and versioned envelopes; M4 relay claims and consumer inbox deduplication | Social chat or domain decisions |
 | Notification | Notification preferences, delivery jobs, email rendering, delivery attempts | Domain decisions that cause notifications |
 
 ### 5.1 Dependency direction
@@ -166,13 +174,22 @@ Module ownership does not mean each call opens a separate transaction. Public
 module APIs are in-process calls that may join the transaction opened by the
 application use case that coordinates them.
 
-- Marketplace owns the `PublishRequest` use case. In one transaction it asks
-  Groups to lock and verify organizer authority, asks Planning to lock and
-  version the plan snapshot, uses Matching eligibility rules with provider
-  data exposed by Providers, records the bounded recipient set, and asks
-  Messaging to append notification work.
-- Marketplace also owns offer submission, selection, confirmation, decline,
-  vote, and timeout use cases. It calls Groups, Planning, and Providers for
+- Planning owns requirement finalization: under group then plan locks it
+  verifies organizer authority, plan ETag, one active window, and database
+  deadline, then copies publishable terms without changing plan state/version.
+- Marketplace owns `PublishRequest`. Authentication and the idempotency claim
+  precede group then plan locks. Groups verifies current organizer authority;
+  Planning checks ETag, state, finalization basis, and database deadline, and
+  creates the immutable version. Matching queries Providers for distinct
+  verified provider IDs and observed eligibility versions. Marketplace stores
+  fixed recipients; Messaging appends per-recipient events in the same caller
+  transaction, together with audit and idempotency completion.
+- Marketplace also owns M2 request closure and the existing cancellation route
+  once cancellation is request-aware. It delegates plan/request state changes
+  to Planning, preserving the route without a Planning-to-Marketplace cycle.
+  Closure/cancellation clears the same-plan current pointer and retains history.
+- From M3, Marketplace also owns offer submission, selection, confirmation,
+  decline, vote, and timeout use cases. It calls Groups, Planning, and Providers for
   guarded authority and state changes in the documented lock order, Billing
   for a quota claim when required, and Messaging for outbox writes.
 - Each called module changes only its own tables. The transaction owner may
@@ -214,42 +231,69 @@ See [ADR-0003](adr/0003-versioned-requests-and-provider-confirmation.md).
 
 ## 7. Critical workflows
 
-### 7.1 Request-first workflow
+### 7.1 Request-first workflow (M2, planned)
 
 ```mermaid
 sequenceDiagram
     participant O as Organizer
     participant A as Arat?
     participant DB as PostgreSQL
-    participant Q as Notification SQS
-    participant P as Provider
+    participant P as Provider staff
 
-    O->>A: Publish plan requirements
-    A->>DB: Insert request, recipient records, and notification outbox rows
-    DB-->>A: Commit
-    A-->>O: Published request
-    A->>Q: Relay provider notifications after commit
-    Q->>A: Deliver notification work
-    A-->>P: Notify matched provider
-    P->>A: Submit sealed offer
-    A->>DB: Insert offer and outbox event
-    A-->>P: Offer accepted
+    O->>A: Finalize chosen window and deadline with plan ETag
+    A->>DB: Lock group then plan; copy immutable finalization
+    DB-->>A: Commit without changing plan version
+    A-->>O: Finalization and advisory warnings
+    O->>A: Publish finalization with key and plan ETag
+    A->>DB: Claim key; lock group then plan; validate finalization
+    A->>DB: Supersede N; insert N+1, fixed recipients, audit, outbox, replay reference
+    DB-->>A: Commit all state atomically
+    A-->>O: OPEN published request
+    P->>A: Read feed in explicit provider context
+    A->>DB: Check staff, VERIFIED, ACTIVE recipient, eligibility version
+    A-->>P: Allowlisted snapshot, lifecycle state, database-time actionable flag
 ```
 
-Provider matching is bounded database-backed application work during publication. A provider that qualifies through several capabilities still receives one recipient record because `(published_request_id, provider_id)` is unique.
+M2 ends at this database-backed boundary. M3 adds offers and matches; M4 relays
+the already captured events and delivers notifications.
 
-The committed recipient set is the fixed audience for that request version.
-Recovery may retry delivery from its existing recipient and outbox rows, but it
-must not rerun eligibility rules to add providers. Reaching a broader audience
-requires the organizer to publish a new request version.
+Matching owns rules only. It selects `VERIFIED` providers by exact category
+membership and configured opaque service-area code, returning distinct provider
+IDs and observed eligibility versions in provider UUID ascending order.
+Request radius is context, not geospatial calculation. Deduplication precedes
+the externally configurable cap (default 100, allowed 1-500); zero or too many
+candidates rejects publication without changing domain state.
 
-Each recipient records the provider eligibility version used during matching.
-Actionable-brief access, notification delivery, and offer submission recheck
-the current version and active verification state. This makes a concurrent
-suspension take effect without locking every candidate provider inside the
-publication transaction. A stale notification job is recorded as skipped and
-sends no email. The provider can still read its own historical offers and
-matches through provider membership.
+Publication does not lock the candidate provider set after the plan lock.
+Provider root mutations that cannot change `provider_id` use `FOR NO KEY UPDATE`
+so implicit recipient foreign-key `KEY SHARE` locks remain compatible; this
+requires real PostgreSQL test evidence. Every later request access rechecks
+active staff, `VERIFIED`, `ACTIVE` recipient, and captured/current eligibility
+equality. Suspension and restoration advance eligibility monotonically; old
+grants never revive. Profile edits advance provider version only and affect
+future matching without rewriting old grants.
+
+The committed audience is fixed. Initial publication captures one
+`ProviderRequestPublished:{requestId}:{providerId}` outbox business key per
+recipient; replacement, closure, and cancellation capture corresponding
+per-recipient terminal events for the old audience. Recovery cannot add
+recipients. M4 stale delivery is skipped after eligibility rechecks.
+
+Private requirement/preference edits remain allowed in `OPEN_FOR_OFFERS` and
+never mutate or close N. Direct republication atomically supersedes N with N+1
+and a new audience. Planning enforces snapshot and ordered-child immutability
+in PostgreSQL. Finalization/publication replay stores compact resource
+references and reconstructs original content, including the original `OPEN`
+publication result after later lifecycle changes. The generic 16 KB replay
+bound and sensitive-key guard remain unchanged.
+
+Provider detail and feed return only the API allowlist. Free-text publishable
+fields are deliberate organizer input, with no automatic PII detection or
+redaction guarantee. Recipient pagination uses created-at descending then
+request ID descending, provider-bound opaque versioned cursors, default 20 and
+maximum 100. There are no category/area filters or post-page filtering.
+Authorized terminal history can remain readable; effective actionability uses
+database time even though M2 has no expiry worker.
 
 ### 7.2 Listing-first workflow (listing extension)
 
@@ -257,7 +301,7 @@ The group adds a provider listing to its plan and asks that provider for a custo
 
 This design keeps voting, selection, confirmation, auditing, and failure handling identical in both paths.
 
-### 7.3 Offer selection and confirmation
+### 7.3 Offer selection and confirmation (M3; delivery in M4)
 
 ```mermaid
 sequenceDiagram
@@ -286,7 +330,9 @@ Transactions are narrow and contain only database work. No HTTP, SQS, email, geo
 
 | Use case | Transaction contents | After commit |
 |---|---|---|
-| Publish request | Lock group then plan, verify current organizer and plan ETag, capture immutable snapshot, supersede previous version, calculate a bounded recipient set, insert recipient and notification outbox rows | Relay provider notifications |
+| Finalize requirements (M2) | Claim key, lock group then plan, verify organizer, ETag, selected window and database deadline; persist immutable terms and advisory summary | Return finalization; no plan state/version change |
+| Publish request (M2) | Claim key, lock group then plan and current request, verify organizer, ETag, finalization basis and deadline; supersede N, create N+1, fixed recipients, audit, outbox rows and compact replay result | Return request; relay deferred to M4 |
+| Close request / cancel plan (M2) | Claim key, lock group then plan then request, validate organizer and ETag, terminalize request, clear current pointer, update plan, audit, append per-recipient terminal events and complete replay | Return result; delivery deferred to M4 |
 | Submit offer | Claim idempotency key, validate provider and current request version, insert sealed offer, append outbox event | Notify group members |
 | Cast vote | Lock group, plan, request, and offer; verify current member; conditionally create or version the member's vote | Optional notification aggregation |
 | Select offer | Claim idempotency key, lock group, provider, then plan; verify current organizer and plan ETag; validate offer and deadline; create one pending match; update plan state; append outbox event | Ask provider to confirm |
@@ -294,11 +340,18 @@ Transactions are narrow and contain only database work. No HTTP, SQS, email, geo
 | Expire confirmation | Lock plan, request, affected offers, then match; transition overdue pending match to timed out; reopen the request or close it and mark remaining submitted offers not selected; update the plan; append outbox event | Notify both parties |
 | Process simulated billing event | Deduplicate event, transition subscription, append audit and outbox events | Notify provider staff |
 
-Detailed race outcomes and lock order are specified in [Consistency and Concurrency](consistency-and-concurrency.md).
+Offer/match rows begin in M3; all notification delivery in this table begins
+in M4. Billing remains deferred. Detailed race outcomes and lock order are
+specified in [Consistency and Concurrency](consistency-and-concurrency.md).
 
 ## 9. Asynchronous processing
 
-Arat? uses the transactional outbox pattern for notifications:
+The planned outbox introduces capture in M2 and delivery in M4. Messaging's
+M2 append API must join the caller transaction; the immutable versioned envelope
+contains only safe identifiers and minimal event facts. It contains no private
+fields. No M2 business command waits for a queue or notification.
+
+The complete M4 target uses the transactional outbox pattern:
 
 1. A domain transaction changes business state and inserts an outbox row atomically.
 2. A relay claims committed rows in bounded batches using `FOR UPDATE SKIP LOCKED`.
@@ -334,7 +387,10 @@ Floci provides local SQS-compatible queues. Queue endpoints and credentials are 
 ## 11. Security and privacy boundaries
 
 - Provider-visible requests contain only the published snapshot, never the private planning discussion.
-- Employer names, member names, direct contact data, and precise private locations are excluded from provider matching.
+- Snapshot projection excludes group ID/name, plan title, creator/member
+  identity, preferences, attendance, private notes, employer and direct contact
+  fields. `providerSafeNotes`, must-haves, and string category attributes remain
+  deliberately publishable text; automatic PII detection/redaction is not promised.
 - Provider staff can act only for provider organizations where they have active membership.
 - Contact details are revealed only after a match reaches the intended state.
 - Audit records capture actor, action, target, time, request correlation, and material state change without copying secrets.

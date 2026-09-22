@@ -25,7 +25,16 @@ Use a PostgreSQL transactional outbox, the `arat-notifications` Amazon SQS stand
 
 Use Floci to emulate only SQS and the DLQ in local development and integration tests. Use AWS SDK for Java 2.x for both Floci and real SQS.
 
-### Producer transaction
+### Delivery sequence (planned)
+
+M2 introduces PostgreSQL outbox persistence, its immutable versioned envelope,
+and an append API that must join the caller transaction. It captures intent
+only: no relay, AWS SDK, SQS, Floci, consumer inbox, SMTP, email rendering,
+delivery retries, or DLQ behavior. M3 appends offer and match events to the same
+outbox. M4 introduces the relay and all delivery mechanisms below. The accepted
+ADR remains a target until the corresponding executable evidence exists.
+
+### Producer transaction (M2 capture)
 
 The application writes these records in one PostgreSQL transaction:
 
@@ -36,7 +45,18 @@ The application writes these records in one PostgreSQL transaction:
 
 If the transaction rolls back, none of them exists. No SQS call occurs inside the business transaction.
 
-### Outbox relay
+M2 publication commits the request, plan transition, fixed recipients, audit,
+idempotency completion, and every per-recipient event atomically. Messaging's
+append API must join that caller transaction, never commit independently.
+Initial events use type `ProviderRequestPublished` and business key
+`ProviderRequestPublished:{requestId}:{providerId}`. Replacement, closure, and
+cancellation use `ProviderRequestSuperseded`, `ProviderRequestClosed`, and
+`ProviderRequestCancelled` with the same `{eventType}:{requestId}:{providerId}`
+pattern for each existing recipient. Replacement captures terminal events for
+N and published events for N+1 in one transaction. Envelopes contain no private
+fields. Recovery never expands an existing request audience.
+
+### Outbox relay (M4)
 
 One or more relay workers:
 
@@ -50,7 +70,7 @@ A process can stop after SQS accepts a message but before PostgreSQL records pub
 
 The relay must not hold a database transaction open during an unbounded network call. Claim leases and update conditions must allow another worker to recover abandoned work.
 
-### Consumer transaction
+### Consumer transaction (M4)
 
 Each message includes a unique `eventId`. A consumer:
 
@@ -65,7 +85,7 @@ If the inbox insert conflicts, the event was already processed. The consumer tre
 
 If the process stops after commit but before deletion, SQS delivers the message again and the inbox makes the replay harmless.
 
-### Queue and DLQ
+### Queue and DLQ (M4)
 
 Use a standard source queue and a standard DLQ. Configure:
 
@@ -84,14 +104,14 @@ The durable envelope includes:
 ```json
 {
   "eventId": "uuid",
-  "eventType": "OfferSelected",
+  "eventType": "ProviderRequestPublished",
   "schemaVersion": 1,
   "occurredAt": "RFC-3339 UTC instant",
-  "aggregateType": "Plan",
+  "aggregateType": "PublishedRequest",
   "aggregateId": "uuid",
   "aggregateVersion": 7,
   "traceId": "opaque trace identifier",
-  "payload": {}
+  "payload": {"requestId": "uuid", "providerId": "uuid"}
 }
 ```
 
@@ -207,7 +227,11 @@ Rejected. It would increase coupling and create false confidence. Only the selec
 
 ## Required implementation evidence
 
-Before this ADR is considered implemented, the repository must contain passing tests that prove:
+M2 capture requires passing PostgreSQL tests for immutable envelopes,
+transaction-joining append, unique deterministic business keys, bounded fixed
+fan-out, all-or-nothing replacement/terminal events, and safe payloads. M4 must
+then prove the relay/delivery cases. Before the full ADR is considered
+implemented, the repository must contain passing tests that prove:
 
 - a rolled-back domain transaction leaves no outbox row;
 - a committed domain change always has its expected outbox row;

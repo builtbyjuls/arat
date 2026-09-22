@@ -12,7 +12,9 @@ The domain model makes four facts explicit:
 
 The model favors visible domain constraints over generic abstractions. The
 names below are target design terms and do not imply that implementation is
-already complete.
+already complete. M2 provider profiles, finalizations, requests, recipients,
+and outbox capture are planned next. Offers, votes, selection, confirmation,
+and matches begin in M3; relay and delivery begin in M4.
 
 ## Bounded contexts
 
@@ -21,7 +23,8 @@ The first release is a modular monolith with these logical domain boundaries:
 - **Identity** owns accounts, authentication identity, platform-level roles,
   and sessions.
 - **Groups** owns groups, membership, invitations, and organizer authority.
-- **Planning** owns plans, preferences, requirements, and request versions.
+- **Planning** owns plans, preferences, requirement drafts, immutable
+  finalizations, and immutable request versions.
 - **Marketplace** owns request recipients, offers, votes, selection attempts,
   and matches.
 - **Providers** owns provider organizations, staff membership, service areas,
@@ -61,13 +64,20 @@ record.
 ### Plan preference
 
 One member's availability, attendance intent, guest count, budget preference,
-or ranked option. Preferences are advisory inputs and are not provider-facing
-until summarized into a published request.
+or ranked option. Preferences are private advisory inputs. Finalization reports
+current and stale input counts to the organizer but never silently derives provider terms from
+preferences or includes preferences in the provider snapshot.
 
 ### Requirement draft
 
 The organizer-editable category, schedule, area, headcount, budget, and
 requirements for a plan. It is private and mutable.
+
+### Requirement finalization
+
+An immutable copy of provider-publishable terms and one chosen active window,
+based on the locked current plan version. Planning owns it. It does not publish
+or change the plan; publication rejects a stale basis.
 
 ### Published request
 
@@ -122,6 +132,7 @@ flowchart TB
     G --> P[Plan aggregate]
     P --> PP[Member preferences]
     P --> RD[Requirement draft]
+    P --> RF[Immutable finalizations]
     P --> PR[Published request versions]
     PR --> RR[Authorized recipients]
     PR --> O[Offer aggregates]
@@ -182,15 +193,21 @@ stateDiagram-v2
 
 Guards:
 
+- M2 adds `OPEN_FOR_OFFERS` to the implemented M1 plan states. `DRAFT` stays
+  reserved; match-related transitions and completion begin in M3.
 - `OPEN_FOR_OFFERS` requires exactly one current request in `OPEN` state.
+  In M2 only this plan state may hold a current-request reference, which must
+  reference a request belonging to the same plan. Closure and cancellation
+  clear it. M3 extends the pointer rule to `MATCH_PENDING`.
 - `MATCH_PENDING` requires exactly one match in
   `AWAITING_PROVIDER_CONFIRMATION` state and a current request in
   `SELECTION_PENDING` state.
 - `MATCHED` requires exactly one match in `CONFIRMED` state.
 - `COMPLETED` and `CANCELLED` are terminal in the MVP.
-- Requirement changes while `OPEN_FOR_OFFERS` never mutate the request. The
-  organizer closes or supersedes it, edits the draft, and publishes a new
-  version.
+- Requirement and preference writes are allowed in `COLLABORATING` and
+  `OPEN_FOR_OFFERS`. Draft edits never mutate or close current request N.
+  Finalization and direct republication create N+1 while N stays current until
+  that transaction commits. No close-first gap is required.
 - A confirmed match cannot be amended in place. Cancellation preserves the
   accepted snapshots. A materially different outing requires another plan.
 
@@ -201,7 +218,7 @@ stateDiagram-v2
     [*] --> OPEN
     OPEN --> SELECTION_PENDING: organizer selects offer
     OPEN --> SUPERSEDED: newer version published
-    OPEN --> CLOSED: offer deadline or organizer closes
+    OPEN --> CLOSED: organizer closes; expiry transition after M2
     OPEN --> CANCELLED: plan cancelled
     SELECTION_PENDING --> OPEN: selection ends before offer deadline
     SELECTION_PENDING --> CLOSED: provider confirms or selection ends after deadline
@@ -211,8 +228,15 @@ stateDiagram-v2
     CANCELLED --> [*]
 ```
 
-`OPEN` is the only state that accepts new offers or selection. While a provider
-confirmation is pending, `SELECTION_PENDING` prevents more provider work. A
+M2 creates only `OPEN`, `SUPERSEDED`, `CLOSED`, and `CANCELLED`. M2 has no
+expiry worker: database time controls the effective actionable flag even if
+stored lifecycle state remains `OPEN` after the deadline. Manual closure
+accepts only `OPEN`, returns the plan to `COLLABORATING`, and clears its current
+pointer. Plan cancellation also accepts `OPEN_FOR_OFFERS` and atomically
+cancels its request, clears the pointer, and preserves history.
+
+The selection transitions in the diagram describe M3. `OPEN` is the only state
+that accepts new offers or selection. While a provider confirmation is pending, `SELECTION_PENDING` prevents more provider work. A
 decline, timeout, or organizer cancellation returns the request to `OPEN` only
 when its offer deadline remains in the future; otherwise it becomes `CLOSED`.
 No state permits snapshot mutation. The effective deadline is evaluated during
@@ -296,12 +320,22 @@ stateDiagram-v2
     SUSPENDED --> VERIFIED: operator restores
 ```
 
-Only `VERIFIED` providers may receive new request deliveries or submit offers.
+In M2 only `VERIFIED` providers qualify for matching and authorized request
+access. Submission by an active provider `ADMIN` takes `UNVERIFIED` or
+`REJECTED` to `PENDING`. A `PLATFORM_OPERATOR` accepts or rejects `PENDING`,
+suspends `VERIFIED`, or restores `SUSPENDED`. Each actual transition increments
+both provider version and monotonic eligibility version exactly once; exact
+replay increments neither. Restoration never reinstates an old version.
+Evidence is 1-10 unique printable ASCII opaque references of 1-256 characters,
+not uploads or recipient-visible data. Optional decision notes are at most 500
+characters; suspension requires a trimmed 1-500 character reason.
+
+M3 requires `VERIFIED` for offers and confirmation; M4 rechecks it for delivery.
 Verification means only that an operator reviewed configured organization and
 contact evidence. It is not a guarantee of safety, licensing, service quality,
 inventory, or a platform recommendation.
-Suspension also blocks confirmation. If a match is still awaiting confirmation,
-the suspension workflow cancels that attempt and reopens or closes its request
+In M3, suspension also blocks confirmation. If a match is still awaiting
+confirmation, the suspension workflow cancels that attempt and reopens or closes its request
 according to the request deadline. A confirmed match is retained for review and
 is never silently rewritten.
 
@@ -332,6 +366,7 @@ erDiagram
     GROUP ||--o{ PLAN : owns
     PLAN ||--o{ PLAN_PREFERENCE : collects
     PLAN ||--|| REQUIREMENT_DRAFT : edits
+    PLAN ||--o{ REQUIREMENT_FINALIZATION : freezes
     PLAN ||--o{ PUBLISHED_REQUEST : versions
     PUBLISHED_REQUEST ||--o{ REQUEST_RECIPIENT : delivered_to
     PROVIDER ||--o{ REQUEST_RECIPIENT : receives
@@ -468,14 +503,30 @@ Contains mutable organizer inputs:
 - Ordered unique must-haves
 - Structured category attributes
 - Provider-safe notes
-- Proposed offer deadline
-- `version`
+
+The draft uses the plan version; the offer deadline is supplied at finalization,
+not stored in the M1 draft.
 
 The application validates the public M1 limits in the
 [API Contract](api-contract.md#milestone-1-collaboration-contract). Removed
 candidate windows are retired rather than deleted, preserving explainable
 preference references. Integer minor units are persistence-only; public money
 uses exact two-decimal PHP strings.
+
+### `requirement_finalization` (M2, planned)
+
+Planning stores an immutable finalization ID, plan ID, basis plan version,
+chosen active candidate-window ID and copied start/end values, offer deadline,
+and the provider-publishable fields listed below. It captures bounded aggregate
+counts of current and stale submitted preferences and warnings without changing
+organizer terms. Finalization is allowed in `COLLABORATING` and
+`OPEN_FOR_OFFERS`, locks group then plan for organizer authority and `If-Match`,
+and does not change plan state or increment plan version. PostgreSQL decision
+time requires `now < offer_deadline < chosen_start`.
+
+Requirement replacement advances plan version and makes an older finalization
+stale. Publication accepts only a same-plan finalization whose basis version
+equals the locked current plan version and whose deadline is still future.
 
 ### `published_request`
 
@@ -497,7 +548,8 @@ Constraints:
 
 - Unique `(plan_id, request_version)`
 - At most one current request in `OPEN` or `SELECTION_PENDING` per plan
-- Snapshot columns cannot be updated after insertion
+- Snapshot columns and ordered child content cannot be updated or deleted
+  after insertion; PostgreSQL enforces immutability
 - `offer_deadline < requested_start_at`
 - Recipient generation and publication occur in one transaction
 - The committed recipient set is fixed for the lifetime of the request version
@@ -512,10 +564,20 @@ Recovery can replay notification work for existing recipients, but it cannot
 rerun matching to expand this audience. Changed eligibility or a desired wider
 audience requires publishing a new immutable request version.
 
-Immutability is enforced through write paths and database permissions or a
-trigger if direct table access cannot otherwise be restricted. State metadata
-is stored separately from immutable snapshot content if that makes enforcement
-clearer in implementation.
+PostgreSQL guards immutable snapshot fields and ordered child content against
+direct SQL mutation, including child insertion, update, and deletion after the
+snapshot is complete. Only guarded lifecycle commands change state metadata.
+
+The provider snapshot allowlist is category, time zone, area code and radius,
+one chosen start/end window, headcount range, optional PHP budget, ordered
+must-haves, category attributes, provider-safe notes, and offer deadline.
+Provider responses add only request ID/version, publication time, lifecycle
+state, and the database-time effective actionable flag. They exclude group ID
+and name, plan title, creator and member identity, preferences, attendance,
+private notes, employer, and direct contact fields. Must-haves, string category
+attributes, and `providerSafeNotes` are deliberately publishable organizer text;
+there is no automatic PII detection or redaction guarantee. Existing M1 field
+bounds apply, including valid multibyte content.
 
 ### `request_recipient`
 
@@ -528,42 +590,64 @@ Important fields:
 - `source_listing_id`, nullable
 - `access_state`: `ACTIVE` or `REVOKED`
 - `revoked_at`, `revoked_by_account_id`, and `revocation_reason`, nullable
-- `delivery_state`
+- Delivery metadata is deferred to M4
 - `created_at`
 
 Unique `(published_request_id, provider_id)` prevents duplicate recipient
 authorization when several matching rules select the same provider. The
 notification outbox uses a separate deterministic business key to prevent a
 second initial-notification job.
-Only an `ACTIVE` recipient can authorize viewing an actionable brief or
-submitting an offer. The stored eligibility version must also equal the
-provider's current eligibility version and the provider must remain active and
-verified. Revocation is an audited state change; it does not delete historical
-offers or matches. A provider's own historical offers and matches remain
+In M2 recipients use `MATCH_RULE`. An `ACTIVE` recipient, active staff
+membership in the explicit provider route context, current `VERIFIED` state,
+and equal stored/current eligibility versions are required for every request
+read, including terminal history. Profile edits never rewrite this grant.
+Restoration cannot revive a stale grant. Cross-provider and non-recipient
+reads return the same private-resource not-found response.
+
+The recipient-owned feed orders by `created_at DESC`, then request ID
+descending, with opaque versioned cursors bound to provider ID and limit 20
+by default, maximum 100. It has no category/area filters and never filters an
+already-limited cursor page. Authorized terminal history may appear with
+`actionable = false`; current `OPEN` requests are actionable only before their
+database deadline. There is no M2 expiry worker.
+
+M3 adds offer submission under the same eligibility guards. Revocation is an
+audited state change; it does not delete historical offers or matches. A provider's own historical offers and matches remain
 readable through provider membership even after an eligibility change.
 
-### `provider`
+### `provider` (M2, planned)
 
-Important fields:
+Providers owns organization identity, active staff membership, verification,
+and eligibility data. Important profile fields are `id`, `display_name`,
+`supported_categories`, `service_area_codes`, `verification_status`,
+`eligibility_version`, and `version`. Creation atomically adds one `UNVERIFIED`
+provider and an `ACTIVE ADMIN` membership for its authenticated creator.
 
-- `id`
-- `display_name`
-- `status`
-- `verification_status`
-- `eligibility_version`
-- `primary_category`
-- `service_area`
-- `public_contact_fields`
-- `version`
+Provider roles are `ADMIN` and `STAFF`, scoped to that organization. Global
+platform roles never imply membership. M2 adds no invitation/removal endpoints;
+tests may seed staff rows directly. Active staff read the profile; an `ADMIN`
+replaces it using the provider ETag. Display name is trimmed 1-120 characters,
+categories are a unique set of 1-10 M1 values, and service areas are a unique
+set of 1-20 trimmed opaque codes of 1-64 characters. With the three current M1
+categories, at most three distinct values can be supplied.
 
-`verification_status = VERIFIED` does not imply service quality, regulatory
-approval, or guaranteed inventory.
+Full profile replacement advances provider version only. Every actual
+verification-state transition advances provider and eligibility versions once.
+An exact replay does not advance either version. Existing recipient grants
+retain captured eligibility versions permanently, including after restoration.
+Profile edits affect future matching without rewriting old grants or advancing
+eligibility version. Contact channels are outside the M2 profile.
 
-Verification, suspension, and reinstatement increment `eligibility_version`.
-Request recipients, submitted offers, and pending matches store the version
-under which they were authorized. Old authorization does not become valid again
-after reinstatement. Category and service-area edits affect future matching but
-do not invalidate an already submitted offer by themselves.
+Matching owns no durable state. It returns distinct `VERIFIED` provider IDs
+and observed eligibility versions whose categories and service-area codes
+contain the exact request values. Codes are configured opaque identifiers;
+radius is context only. Order is provider UUID ascending. Deduplicate before
+the externally configurable cap (default 100, allowed 1-500); zero or more than
+the cap rejects publication without domain writes, rather than truncating it.
+
+Provider root mutations that cannot change `provider_id` use `FOR NO KEY
+UPDATE`, compatible with recipient foreign-key `KEY SHARE` locks. Real
+PostgreSQL tests must prove the compatibility.
 
 ### `listing`
 
@@ -709,6 +793,15 @@ key ID, and nonce. Reusing a key with a different fingerprint is a conflict,
 not a replay. The M1 command set and replay ordering are defined in the
 [API Contract](api-contract.md#headers-retries-and-errors).
 
+M2 finalization and publication use the existing resource reference for the
+immutable resource ID, original status and allowlisted headers, and only small
+fixed-shape reconstruction metadata. They never put full snapshots in
+`ReplayState`. Reconstruction supports maximum valid multibyte content and
+attribute keys containing `token`, `secret`, `authorization`, `password`, or
+`cookie` without weakening the generic sensitive-key guard or 16 KB limit.
+Publication replay reconstructs the original `OPEN` representation regardless
+of later terminal lifecycle state.
+
 ### `audit_event`
 
 Audit is a small shared infrastructure component, not a deployable service.
@@ -719,10 +812,16 @@ invitation tokens or private preference notes.
 
 ### Publishing a new request version
 
-Lock the plan row, verify organizer authority and plan state, supersede any
-current open request, allocate the next version, insert its immutable snapshot,
-install it as current, and create recipient records. One transaction prevents
-two organizers from publishing the same next version.
+Authenticate and claim idempotency before locking group then plan. Verify
+current organizer authority, plan ETag and state, finalization basis, and
+database deadline. Lock the old request if present, supersede it, allocate the
+next version, install its immutable snapshot and fixed recipients, and update
+the plan. Audit, per-recipient outbox rows, and idempotency completion join the
+same transaction through public module APIs. Matching observes eligibility
+versions without locking candidate providers after the plan lock. Later access
+rechecks those versions and provider state. Marketplace owns this use case;
+Planning owns finalizations and request state, Providers owns eligibility, and
+Messaging owns outbox persistence.
 
 ### Selecting an offer
 
@@ -771,7 +870,7 @@ plans. Expected access paths include:
 - Active membership by account and group
 - Plans by group and recent activity
 - Current open request by plan
-- Recipient inbox by provider, state, and offer deadline
+- M2 recipient feed by provider, created-at descending, and request ID descending
 - Published listings by category and service area
 - Current submitted offers by request and provider
 - Offer expiration by state and expiration
@@ -786,9 +885,10 @@ not required until measured requirements justify radius or polygon queries.
 
 The model is considered proved when automated tests demonstrate:
 
-1. Published snapshot fields cannot be changed through supported write paths.
-2. Concurrent publications receive distinct, ordered versions and leave one
-   current open request.
+1. Published snapshot fields and ordered children cannot be changed through
+   application paths or direct SQL.
+2. Concurrent publications with one plan ETag leave one winner and one current
+   open request; successive valid publications receive increasing versions.
 3. An offer cannot cross request, provider-recipient, or plan boundaries.
 4. Concurrent offer selections leave one active match.
 5. Offer withdrawal versus selection produces one terminal winner.

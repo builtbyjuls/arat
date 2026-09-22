@@ -102,6 +102,29 @@ Arat? will use:
 
 Redis locks, Java locks, and queue ordering will not be required for domain correctness. Release 1 uses SQS only for notifications after a transaction commits. Provider matching remains database-backed application work.
 
+### M2 publication coordination (planned)
+
+M2 adds provider eligibility, finalization, request publication/access, and
+transactional outbox capture. Relay and queue delivery begin in M4. M2 commands
+claim idempotency before group, plan, and request locks; Marketplace coordinates
+publication through public module APIs in one PostgreSQL transaction. Planning
+owns immutable finalizations and request versions; Providers owns eligibility;
+Matching owns rules only; Messaging owns the transaction-joining outbox append.
+
+Matching captures observed eligibility versions without locking the candidate
+provider set after the plan. Later access requires active staff, VERIFIED state,
+ACTIVE recipient, and equal stored/current eligibility versions. Every actual
+verification transition advances provider and eligibility versions once;
+restoration never revives old grants. Profile replacement advances only provider
+version and affects future matching.
+
+Provider root mutations that cannot change `provider_id` use `FOR NO KEY UPDATE`
+to remain compatible with recipient foreign-key `KEY SHARE` locks. Tests must
+prove both lock orders with separate PostgreSQL connections; a documented lock
+matrix alone is insufficient. PostgreSQL also enforces immutable snapshot and
+ordered child content, same-plan current pointers, unique request versions,
+and deterministic per-recipient outbox business keys.
+
 ## Consequences
 
 ### Positive

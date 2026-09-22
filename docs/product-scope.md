@@ -17,6 +17,12 @@ creates a pending `Match`; provider confirmation turns it into the immutable
 record of what both sides agreed to pursue. The provider remains responsible
 for its real inventory, payment collection, and fulfillment.
 
+M1 private collaboration is implemented. M2 provider identity, verification,
+finalization, immutable request publication, authorized access, and PostgreSQL
+outbox capture are planned next. Offers, votes, selection, provider
+confirmation, and matches begin in M3; notification relay/delivery begins in
+M4. The release capabilities below describe that target, not implementation.
+
 ## Problem statement
 
 Casual group plans are usually coordinated through chat messages, polls,
@@ -67,7 +73,8 @@ These are product assumptions to validate, not claims about market demand.
 
 An organizer has all member capabilities and can also:
 
-- Define and edit requirements while a plan is private
+- Define and edit the private requirement draft, including while a published
+  request remains open
 - Publish an anonymized, versioned provider brief
 - Distribute the brief to matched providers
 - In the listing extension, invite a provider directly from a listing
@@ -166,15 +173,24 @@ workflow and the same correctness rules.
 - Record each member's availability, attendance intent, guest count, and budget
   preference
 - Distinguish interest from intent to join
-- Let the organizer freeze one set of requirements for publication
+- Let the organizer freeze one active window and its terms at the current plan
+  version; advisory preference counts/warnings never silently replace those terms
+- Keep an open immutable request current while a changed private draft is
+  finalized and published as its atomic replacement
 
 ### Provider request marketplace
 
 - Create an immutable numbered request version from current requirements
-- Maintain the provider profile, category, service area, contact channel, and
-  verification status required for matching
+- Maintain display name, supported categories, configured opaque service-area
+  codes, scoped ADMIN/STAFF membership, and verification required for matching;
+  M2 profile data has no contact channel
+- Match VERIFIED providers by exact category and area code, with radius as
+  context only; reject zero or excessive recipients rather than truncating them
 - Distribute the request to matched verified providers
-- Reveal only the anonymized information needed to quote
+- Reveal only allowlisted publishable terms, excluding group and member
+  identity, private collaboration, employer, and contact fields; organizer text
+  in provider-safe notes, must-haves, and string attributes is intentionally
+  published without automatic PII detection or redaction
 - Close, cancel, or supersede a request without rewriting its history
 - Prevent providers outside the request audience from discovering it
 
@@ -192,8 +208,9 @@ workflow and the same correctness rules.
 
 ### Notifications and auditability
 
-- Record material domain events transactionally
-- Deliver retryable in-app or inspectable local email notifications
+- Capture per-recipient notification intent transactionally in M2 without a
+  relay, queue, inbox, SMTP, retries, or DLQ
+- From M4, deliver retryable in-app or inspectable local email notifications
 - Show a group-facing timeline of requirement publication, offers, selection,
   confirmation, expiration, and cancellation
 - Preserve actor, timestamp, and correlation identifiers for sensitive actions
@@ -325,8 +342,9 @@ Release 1 is ready when:
    active match.
 4. Selection-versus-expiration, selection-versus-withdrawal, and
    confirmation-versus-timeout races have deterministic outcomes.
-5. Tests prove that editing requirements creates a new immutable request version
-   and cannot mutate an existing offer's context.
+5. Tests prove that editing private requirements preserves the current request;
+   publication creates a new immutable version and cannot mutate an existing
+   offer's context.
 6. Duplicate commands and asynchronous deliveries are harmless.
 7. The application and realistic test infrastructure run locally without a
    paid cloud account.
