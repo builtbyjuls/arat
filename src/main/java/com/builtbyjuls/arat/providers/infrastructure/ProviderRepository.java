@@ -113,16 +113,57 @@ public class ProviderRepository {
 
     @Transactional(propagation = Propagation.MANDATORY)
     public ProviderOrganization lockOrganization(UUID providerId) {
+        return findAndLockOrganization(providerId).orElseThrow();
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Optional<ProviderOrganization> findAndLockOrganization(UUID providerId) {
         return jdbcClient.sql("""
                         SELECT provider_id, display_name, status, verification_status,
                                version, eligibility_version, created_at, updated_at
                         FROM provider_organization
                         WHERE provider_id = :providerId
                         FOR NO KEY UPDATE
-                        """)
+                """)
                 .param("providerId", providerId)
                 .query(this::mapOrganization)
-                .single();
+                .optional();
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Optional<ProviderOrganization> replaceProfileVersioned(
+            UUID providerId,
+            long expectedVersion,
+            String displayName,
+            List<ProviderCategory> supportedCategories,
+            List<String> serviceAreaCodes) {
+        var organization = jdbcClient.sql("""
+                        UPDATE provider_organization
+                        SET display_name = :displayName,
+                            version = version + 1,
+                            updated_at = statement_timestamp()
+                        WHERE provider_id = :providerId
+                          AND version = :expectedVersion
+                        RETURNING provider_id, display_name, status, verification_status,
+                                  version, eligibility_version, created_at, updated_at
+                        """)
+                .param("providerId", providerId)
+                .param("expectedVersion", expectedVersion)
+                .param("displayName", displayName)
+                .query(this::mapOrganization)
+                .optional();
+        if (organization.isEmpty()) {
+            return organization;
+        }
+        jdbcClient.sql("DELETE FROM provider_supported_category WHERE provider_id = :providerId")
+                .param("providerId", providerId)
+                .update();
+        jdbcClient.sql("DELETE FROM provider_service_area WHERE provider_id = :providerId")
+                .param("providerId", providerId)
+                .update();
+        supportedCategories.forEach(category -> insertSupportedCategory(providerId, category));
+        serviceAreaCodes.forEach(areaCode -> insertServiceArea(providerId, areaCode));
+        return organization;
     }
 
     private void insertStaffMembership(ProviderStaffMembership membership) {

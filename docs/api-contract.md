@@ -447,7 +447,8 @@ arbitrary category-attribute keys in the generic idempotency component.
 ### Provider identity and profile
 
 Provider creation is implemented with PostgreSQL endpoint evidence in
-`ProviderCreationIT`. Provider reads and profile replacement remain planned.
+`ProviderCreationIT`. Provider reads and profile replacement are implemented
+with PostgreSQL endpoint evidence in `ProviderProfileIT`.
 
 ~~~http
 POST /api/v1/providers
@@ -642,7 +643,8 @@ worker; delayed cleanup cannot make an expired request actionable.
 
 ### M2 command outcomes and stable problems
 
-Provider creation is implemented. All other entries are planned. Common malformed syntax and authentication outcomes
+Provider creation, reads, and profile replacement are implemented. Remaining
+entries are planned. Common malformed syntax and authentication outcomes
 remain 400 and 401. Required missing, malformed, and stale version preconditions
 return 428 `PRECONDITION_REQUIRED`, 400 `INVALID_PRECONDITION`, and 412
 `PRECONDITION_FAILED`. Validation failures use 422 `VALIDATION_FAILED`;
