@@ -92,7 +92,7 @@ and Location before current ETag validation. Reusing a key with different
 content returns `409 IDEMPOTENCY_KEY_REUSED` before mutation. Normal
 authentication failure remains 401 and malformed request syntax remains 400.
 
-The planned M1 problem codes are:
+The implemented M1 problem codes are:
 
 `PRIVATE_RESOURCE_NOT_FOUND`, `FORBIDDEN_ROLE`, `FINAL_ORGANIZER_REQUIRED`,
 `INVITATION_UNAVAILABLE`, `ALREADY_MEMBER`, `PRECONDITION_REQUIRED`,

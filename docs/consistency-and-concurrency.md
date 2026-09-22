@@ -1,8 +1,14 @@
 # Consistency and Concurrency
 
-Status: Target design
+Status: M1 collaboration proof implemented; marketplace, messaging, billing,
+and load evidence remain target design.
 
-This document defines the correctness contract for Arat?. It describes what the implementation and tests must prove. It does not claim that the proof already exists.
+This document defines the correctness contract for Arat?. M1 group and planning
+races have executable PostgreSQL evidence in
+`CollaborationRaceOutcomesIT`, and the M1 HTTP journey and OpenAPI contract have
+executable evidence in `MilestoneOneJourneyIT`. Marketplace, messaging,
+billing, and load claims remain design targets until their implementation and
+tests exist.
 
 ## 1. Consistency model
 
@@ -619,4 +625,6 @@ Before presenting the project as concurrency-safe, the repository must contain:
 - A reproducible load-test scenario and raw output
 - An explanation of any observed deadlocks, retries, or bottlenecks
 
-Until those artifacts exist and pass, this document is a design specification rather than proof.
+The M1 collaboration artifacts named above provide executable evidence for that
+scope. The marketplace, messaging, billing, and load artifacts remain required
+before those later claims become proof rather than design targets.

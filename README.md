@@ -11,9 +11,10 @@ organizer selects one offer, and the provider confirms the match.
 
 The name comes from Filipino backslang for "tara", or "let's go."
 
-Milestone 0 provides a runnable application foundation. The documents describe
-the target system and the evidence required before making implementation,
-performance, or scalability claims beyond that foundation.
+Milestones 0 and 1 provide a runnable application foundation and an implemented
+private collaboration workflow. Marketplace workflows remain planned, and the
+documents describe the evidence required before making performance or
+scalability claims beyond the implemented foundation.
 
 ## Why this project exists
 
@@ -168,9 +169,10 @@ better-quality group requests.
 
 ## Local-first development
 
-Normal development and automated tests need Docker but no AWS account. Docker
-runs PostgreSQL for host-run application development and Testcontainers tests;
-the full Compose stack also runs the application and Prometheus.
+Normal M0 and M1 development and verification need Docker but no AWS account,
+cloud credentials, Floci, Mailpit, or paid service. Docker runs PostgreSQL for
+host-run application development and Testcontainers tests; the full Compose
+stack also runs the application and Prometheus.
 
 | Planned local component | Possible future AWS equivalent |
 | --- | --- |
@@ -218,7 +220,7 @@ run.
 Prerequisites are Java 21, Bash, Docker with Docker Compose v2, `curl`,
 `unzip`, `jq`, and a SHA-256 utility such as `sha256sum` or `shasum`. The
 wrapper is the normal build entry point. No AWS account, cloud credentials,
-Floci, or Mailpit is needed for M0.
+Floci, Mailpit, or paid service is needed for M0 and M1.
 
 ### Test lanes
 

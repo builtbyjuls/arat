@@ -4,7 +4,11 @@
 
 Arat? is a collaborative planning and provider-matching system. Its most important claims are about correctness under concurrent and repeated requests, not about the number of screens it exposes. The test suite must therefore prove the business invariants with the same PostgreSQL behavior used by the application.
 
-This document defines the target testing strategy. It does not claim that the tests, load scenarios, or results already exist.
+This document defines the target testing strategy for the planned marketplace,
+messaging, billing, and load work. M1 group and planning correctness already
+have executable PostgreSQL evidence in `CollaborationRaceOutcomesIT`, while the
+HTTP journey and OpenAPI contract are covered by `MilestoneOneJourneyIT`.
+Those later suites and results remain planned.
 
 ## Quality goals
 
