@@ -2,9 +2,13 @@ package com.builtbyjuls.arat.architecture;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.builtbyjuls.arat.providers.api.ProviderEligibilityAccess;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
 import org.junit.jupiter.api.Test;
+
+import java.lang.reflect.Method;
+import java.util.Arrays;
 
 class ModuleBoundaryRulesTest {
 
@@ -57,5 +61,17 @@ class ModuleBoundaryRulesTest {
 
         assertThat(result.hasViolation()).isTrue();
         assertThat(result.getFailureReport().toString()).contains("Cycle detected");
+    }
+
+    @Test
+    void providerEligibilityBoundaryDoesNotExposeInfrastructureTypes() {
+        assertThat(ProviderEligibilityAccess.class.getDeclaredMethods())
+                .allSatisfy(this::assertDoesNotExposeInfrastructureType);
+    }
+
+    private void assertDoesNotExposeInfrastructureType(Method method) {
+        assertThat(method.getReturnType().getPackageName()).doesNotContain(".infrastructure");
+        assertThat(Arrays.stream(method.getParameterTypes()).map(Class::getPackageName))
+                .allSatisfy(packageName -> assertThat(packageName).doesNotContain(".infrastructure"));
     }
 }

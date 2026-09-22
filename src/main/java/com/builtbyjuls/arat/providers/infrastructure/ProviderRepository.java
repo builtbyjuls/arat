@@ -1,5 +1,7 @@
 package com.builtbyjuls.arat.providers.infrastructure;
 
+import com.builtbyjuls.arat.providers.api.ProviderEligibilityCandidate;
+import com.builtbyjuls.arat.providers.api.ProviderEligibilityCriteria;
 import com.builtbyjuls.arat.providers.domain.ProviderCategory;
 import com.builtbyjuls.arat.providers.domain.ProviderOrganization;
 import com.builtbyjuls.arat.providers.domain.ProviderOrganizationStatus;
@@ -112,6 +114,32 @@ public class ProviderRepository {
                         """)
                 .param("providerId", providerId)
                 .query((resultSet, rowNum) -> resultSet.getString("area_code"))
+                .list();
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProviderEligibilityCandidate> findVerifiedEligibilityCandidates(
+            ProviderEligibilityCriteria criteria, int maximumCandidateCount) {
+        return jdbcClient.sql("""
+                        SELECT DISTINCT organization.provider_id, organization.eligibility_version
+                        FROM provider_organization AS organization
+                        JOIN provider_supported_category AS category
+                          ON category.provider_id = organization.provider_id
+                         AND category.category = :category
+                        JOIN provider_service_area AS service_area
+                          ON service_area.provider_id = organization.provider_id
+                         AND service_area.area_code = :serviceAreaCode
+                        WHERE organization.status = 'ACTIVE'
+                          AND organization.verification_status = 'VERIFIED'
+                        ORDER BY organization.provider_id ASC
+                        LIMIT :maximumCandidateCount
+                        """)
+                .param("category", criteria.category())
+                .param("serviceAreaCode", criteria.serviceAreaCode())
+                .param("maximumCandidateCount", maximumCandidateCount)
+                .query((resultSet, rowNum) -> new ProviderEligibilityCandidate(
+                        resultSet.getObject("provider_id", UUID.class),
+                        resultSet.getLong("eligibility_version")))
                 .list();
     }
 
