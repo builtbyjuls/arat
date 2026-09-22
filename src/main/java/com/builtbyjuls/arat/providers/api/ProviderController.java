@@ -3,6 +3,7 @@ package com.builtbyjuls.arat.providers.api;
 import com.builtbyjuls.arat.identity.api.CurrentActor;
 import com.builtbyjuls.arat.providers.application.ProviderCreationService;
 import com.builtbyjuls.arat.providers.application.ProviderProfileService;
+import com.builtbyjuls.arat.providers.application.ProviderVerificationSubmissionService;
 import com.builtbyjuls.arat.providers.domain.ProviderCategory;
 import com.builtbyjuls.arat.web.ApiProblemResponse;
 import com.builtbyjuls.arat.web.CorrelationIdFilter;
@@ -47,14 +48,17 @@ public class ProviderController {
     private final CurrentActor currentActor;
     private final ProviderCreationService providerCreationService;
     private final ProviderProfileService providerProfileService;
+    private final ProviderVerificationSubmissionService providerVerificationSubmissionService;
 
     public ProviderController(
             CurrentActor currentActor,
             ProviderCreationService providerCreationService,
-            ProviderProfileService providerProfileService) {
+            ProviderProfileService providerProfileService,
+            ProviderVerificationSubmissionService providerVerificationSubmissionService) {
         this.currentActor = currentActor;
         this.providerCreationService = providerCreationService;
         this.providerProfileService = providerProfileService;
+        this.providerVerificationSubmissionService = providerVerificationSubmissionService;
     }
 
     @PostMapping
@@ -103,6 +107,35 @@ public class ProviderController {
         var actor = currentActor.requireAuthenticatedActor();
         var provider = providerProfileService.read(providerId, actor.accountId());
         return ResponseEntity.ok().eTag(ProviderCreationService.etag(provider.version())).body(provider);
+    }
+
+    @PostMapping("/{providerId}/verification-submissions")
+    @Operation(operationId = "submitProviderVerification", summary = "Submit provider verification evidence")
+    @SecurityRequirement(name = "bearerAuth")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Verification evidence submitted", headers = @Header(name = "ETag", description = "Current provider version"), content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ProviderVerificationSubmissionRepresentation.class))),
+        @ApiResponse(responseCode = "400", description = "Missing or malformed request", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "401", description = "Authentication required", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "403", description = "Administrator role required", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "404", description = "Private resource not found", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "409", description = "Provider state conflict or idempotency key reused", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "422", description = "Validation failed", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class)))
+    })
+    public ResponseEntity<ProviderVerificationSubmissionRepresentation> submitVerification(
+            @PathVariable UUID providerId,
+            @Valid @RequestBody SubmitProviderVerificationRequest request,
+            @RequestHeader("Idempotency-Key") @NotBlank @Size(max = 255) String idempotencyKey,
+            HttpServletRequest servletRequest) {
+        var actor = currentActor.requireAuthenticatedActor();
+        var submission = providerVerificationSubmissionService.submit(new SubmitProviderVerificationCommand(
+                actor.accountId(),
+                providerId,
+                idempotencyKey,
+                request.evidenceReferences(),
+                (String) servletRequest.getAttribute(CorrelationIdFilter.REQUEST_ATTRIBUTE)));
+        return ResponseEntity.ok()
+                .eTag(ProviderCreationService.etag(submission.providerVersion()))
+                .body(submission);
     }
 
     @PutMapping("/{providerId}/profile")
@@ -166,6 +199,17 @@ public class ProviderController {
             return serviceAreaCodes == null || serviceAreaCodes.stream()
                     .filter(java.util.Objects::nonNull)
                     .allMatch(areaCode -> areaCode.trim().length() <= 64);
+        }
+    }
+
+    public record SubmitProviderVerificationRequest(
+            @NotNull @Size(min = 1, max = 10) List<@NotNull @Size(min = 1, max = 256) String> evidenceReferences) {
+
+        @AssertTrue(message = "evidenceReferences must be unique printable ASCII references")
+        public boolean hasUniquePrintableAsciiEvidenceReferences() {
+            return evidenceReferences == null || evidenceReferences.stream().allMatch(reference -> reference != null
+                    && reference.matches("[ -~]+"))
+                    && evidenceReferences.stream().distinct().count() == evidenceReferences.size();
         }
     }
 }

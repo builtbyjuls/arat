@@ -12,9 +12,10 @@ The domain model makes four facts explicit:
 
 The model favors visible domain constraints over generic abstractions. The
 names below are target design terms and do not imply that implementation is
-already complete. M2 provider profiles are implemented; finalizations, requests,
-recipients, and outbox capture are planned next. Offers, votes, selection, confirmation,
-and matches begin in M3; relay and delivery begin in M4.
+already complete. M2 provider profiles and verification submissions are
+implemented; finalizations, requests, recipients, and outbox capture are
+planned next. Offers, votes, selection, confirmation, and matches begin in M3;
+relay and delivery begin in M4.
 
 ## Bounded contexts
 
@@ -327,8 +328,10 @@ suspends `VERIFIED`, or restores `SUSPENDED`. Each actual transition increments
 both provider version and monotonic eligibility version exactly once; exact
 replay increments neither. Restoration never reinstates an old version.
 Evidence is 1-10 unique printable ASCII opaque references of 1-256 characters,
-not uploads or recipient-visible data. Optional decision notes are at most 500
-characters; suspension requires a trimmed 1-500 character reason.
+not uploads or recipient-visible data. Each submission and its ordered evidence
+set are immutable. Audit and replay data retain IDs or counts, not evidence
+content. Optional decision notes are at most 500 characters; suspension
+requires a trimmed 1-500 character reason.
 
 M3 requires `VERIFIED` for offers and confirmation; M4 rechecks it for delivery.
 Verification means only that an operator reviewed configured organization and
@@ -615,7 +618,7 @@ M3 adds offer submission under the same eligibility guards. Revocation is an
 audited state change; it does not delete historical offers or matches. A provider's own historical offers and matches remain
 readable through provider membership even after an eligibility change.
 
-### `provider` (M2, planned)
+### `provider` (M2, partially implemented)
 
 Providers owns organization identity, active staff membership, verification,
 and eligibility data. Important profile fields are `id`, `display_name`,
@@ -648,6 +651,14 @@ the cap rejects publication without domain writes, rather than truncating it.
 Provider root mutations that cannot change `provider_id` use `FOR NO KEY
 UPDATE`, compatible with recipient foreign-key `KEY SHARE` locks. Real
 PostgreSQL tests must prove the compatibility.
+
+### `provider_verification_submission` (M2, implemented)
+
+An immutable submission records its ID, provider ID, submitting account ID,
+database submission time, and evidence count. Ordered child rows contain the
+opaque evidence references. PostgreSQL enforces one through ten unique
+printable ASCII references, contiguous bounded order, matching parent count,
+and no update or delete after insertion.
 
 ### `listing`
 

@@ -488,10 +488,14 @@ The request radius is provider-visible context, not a distance calculation.
 
 ### Verification and eligibility
 
-Only `VERIFIED` providers are eligible. An active provider `ADMIN` may submit
-from `UNVERIFIED` or `REJECTED`. Submission carries 1-10 unique printable ASCII
-opaque evidence references, each 1-256 characters. Evidence is referenced, not
-uploaded, and is never returned to request recipients.
+Only `VERIFIED` providers are eligible. Verification submission is implemented:
+an active provider `ADMIN` may submit from `UNVERIFIED` or `REJECTED` through
+`POST /api/v1/providers/{providerId}/verification-submissions` with an
+`Idempotency-Key`. It returns `200` with the new provider ETag and a submission
+ID and evidence count, but never returns evidence content. Submission carries
+1-10 unique printable ASCII opaque evidence references, each 1-256 characters.
+Evidence is referenced, not uploaded, and is never returned to request
+recipients.
 
 `PLATFORM_OPERATOR` may accept or reject `PENDING`, suspend `VERIFIED`, and
 restore `SUSPENDED` to `VERIFIED`. Decision notes are optional and at most 500
@@ -923,7 +927,8 @@ Planned operational endpoints:
 - M4 outbox and inbox backlog summaries for authorized operators
 - M4 redrive command for a failed notification after operator review
 
-Provider verification commands (M2, planned):
+Provider verification submission is implemented. Operator decisions,
+suspension, and restoration remain planned:
 
 ~~~http
 POST /api/v1/providers/{providerId}/verification-submissions
@@ -934,8 +939,10 @@ Idempotency-Key: ...
 ~~~
 
 The submission contains configured evidence references, not uploaded identity
-documents. Decision, suspension, and restoration commands require the
-platform-level operator role and append an audit record.
+documents. It records an immutable submission and ordered reference set, and
+the audit and replay records contain IDs or counts but not evidence content.
+Decision, suspension, and restoration commands require the platform-level
+operator role and append an audit record.
 
 Administrative endpoints require a separate operator role and are not part of
 the public API surface.

@@ -49,6 +49,21 @@ class ProviderProfileProblemAdvice {
         }
     }
 
+    @ExceptionHandler(ProviderVerificationException.class)
+    void verificationFailure(
+            ProviderVerificationException exception,
+            HttpServletRequest request,
+            HttpServletResponse response) throws IOException {
+        switch (exception.reason()) {
+            case PRIVATE_RESOURCE_NOT_FOUND -> write(request, response, HttpStatus.NOT_FOUND,
+                    "PRIVATE_RESOURCE_NOT_FOUND", "Private resource not found", "The requested private resource was not found.");
+            case FORBIDDEN_ROLE -> write(request, response, HttpStatus.FORBIDDEN,
+                    "FORBIDDEN_ROLE", "Forbidden role", "An administrator role is required.");
+            case INVALID_PROVIDER_STATE -> write(request, response, HttpStatus.CONFLICT,
+                    "INVALID_PROVIDER_STATE", "Invalid provider state", "The provider cannot submit verification evidence in its current state.");
+        }
+    }
+
     private void write(
             HttpServletRequest request,
             HttpServletResponse response,

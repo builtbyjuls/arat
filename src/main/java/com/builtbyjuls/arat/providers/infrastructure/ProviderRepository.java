@@ -7,6 +7,7 @@ import com.builtbyjuls.arat.providers.domain.ProviderStaffMembership;
 import com.builtbyjuls.arat.providers.domain.ProviderStaffRole;
 import com.builtbyjuls.arat.providers.domain.ProviderStaffStatus;
 import com.builtbyjuls.arat.providers.domain.ProviderVerificationStatus;
+import com.builtbyjuls.arat.providers.domain.ProviderVerificationSubmission;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
@@ -164,6 +165,53 @@ public class ProviderRepository {
         supportedCategories.forEach(category -> insertSupportedCategory(providerId, category));
         serviceAreaCodes.forEach(areaCode -> insertServiceArea(providerId, areaCode));
         return organization;
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Optional<ProviderOrganization> transitionVerificationToPending(UUID providerId, long expectedVersion) {
+        return jdbcClient.sql("""
+                        UPDATE provider_organization
+                        SET verification_status = 'PENDING',
+                            version = version + 1,
+                            eligibility_version = eligibility_version + 1,
+                            updated_at = statement_timestamp()
+                        WHERE provider_id = :providerId
+                          AND version = :expectedVersion
+                          AND verification_status IN ('UNVERIFIED', 'REJECTED')
+                        RETURNING provider_id, display_name, status, verification_status,
+                                  version, eligibility_version, created_at, updated_at
+                        """)
+                .param("providerId", providerId)
+                .param("expectedVersion", expectedVersion)
+                .query(this::mapOrganization)
+                .optional();
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void insertVerificationSubmission(ProviderVerificationSubmission submission) {
+        jdbcClient.sql("""
+                        INSERT INTO provider_verification_submission (
+                            submission_id, provider_id, submitted_by_account_id, evidence_count
+                        )
+                        VALUES (:submissionId, :providerId, :submittedByAccountId, :evidenceCount)
+                        """)
+                .param("submissionId", submission.submissionId())
+                .param("providerId", submission.providerId())
+                .param("submittedByAccountId", submission.submittedByAccountId())
+                .param("evidenceCount", submission.evidenceReferences().size())
+                .update();
+        for (var index = 0; index < submission.evidenceReferences().size(); index++) {
+            jdbcClient.sql("""
+                            INSERT INTO provider_verification_evidence_reference (
+                                submission_id, sort_order, evidence_reference
+                            )
+                            VALUES (:submissionId, :sortOrder, :evidenceReference)
+                            """)
+                    .param("submissionId", submission.submissionId())
+                    .param("sortOrder", index + 1)
+                    .param("evidenceReference", submission.evidenceReferences().get(index))
+                    .update();
+        }
     }
 
     private void insertStaffMembership(ProviderStaffMembership membership) {
