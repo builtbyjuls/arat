@@ -72,10 +72,10 @@ public class ProviderVerificationSubmissionService {
             throw failure(ProviderVerificationException.Reason.INVALID_PROVIDER_STATE);
         }
 
-        var updatedOrganization = providerRepository.transitionVerificationToPending(
-                        command.providerId(), organization.version())
-                .orElseThrow(() -> failure(ProviderVerificationException.Reason.INVALID_PROVIDER_STATE));
         var submissionId = UUID.randomUUID();
+        var updatedOrganization = providerRepository.transitionVerificationToPending(
+                        command.providerId(), organization.version(), submissionId)
+                .orElseThrow(() -> failure(ProviderVerificationException.Reason.INVALID_PROVIDER_STATE));
         providerRepository.insertVerificationSubmission(new ProviderVerificationSubmission(
                 submissionId,
                 command.providerId(),

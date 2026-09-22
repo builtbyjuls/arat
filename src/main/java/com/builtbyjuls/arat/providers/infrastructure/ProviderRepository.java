@@ -6,6 +6,8 @@ import com.builtbyjuls.arat.providers.domain.ProviderOrganizationStatus;
 import com.builtbyjuls.arat.providers.domain.ProviderStaffMembership;
 import com.builtbyjuls.arat.providers.domain.ProviderStaffRole;
 import com.builtbyjuls.arat.providers.domain.ProviderStaffStatus;
+import com.builtbyjuls.arat.providers.domain.ProviderVerificationDecision;
+import com.builtbyjuls.arat.providers.domain.ProviderVerificationDecisionRecord;
 import com.builtbyjuls.arat.providers.domain.ProviderVerificationStatus;
 import com.builtbyjuls.arat.providers.domain.ProviderVerificationSubmission;
 import java.sql.ResultSet;
@@ -168,10 +170,12 @@ public class ProviderRepository {
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
-    public Optional<ProviderOrganization> transitionVerificationToPending(UUID providerId, long expectedVersion) {
+    public Optional<ProviderOrganization> transitionVerificationToPending(
+            UUID providerId, long expectedVersion, UUID submissionId) {
         return jdbcClient.sql("""
                         UPDATE provider_organization
                         SET verification_status = 'PENDING',
+                            current_verification_submission_id = :submissionId,
                             version = version + 1,
                             eligibility_version = eligibility_version + 1,
                             updated_at = statement_timestamp()
@@ -183,6 +187,7 @@ public class ProviderRepository {
                         """)
                 .param("providerId", providerId)
                 .param("expectedVersion", expectedVersion)
+                .param("submissionId", submissionId)
                 .query(this::mapOrganization)
                 .optional();
     }
@@ -212,6 +217,63 @@ public class ProviderRepository {
                     .param("evidenceReference", submission.evidenceReferences().get(index))
                     .update();
         }
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Optional<UUID> findCurrentVerificationSubmissionId(UUID providerId) {
+        return jdbcClient.sql("""
+                        SELECT current_verification_submission_id
+                        FROM provider_organization
+                        WHERE provider_id = :providerId
+                        """)
+                .param("providerId", providerId)
+                .query(UUID.class)
+                .optional();
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Optional<ProviderOrganization> transitionPendingVerification(
+            UUID providerId, long expectedVersion, ProviderVerificationDecision decision) {
+        var targetStatus = decision == ProviderVerificationDecision.ACCEPT ? "VERIFIED" : "REJECTED";
+        return jdbcClient.sql("""
+                        UPDATE provider_organization
+                        SET verification_status = :targetStatus,
+                            current_verification_submission_id = NULL,
+                            version = version + 1,
+                            eligibility_version = eligibility_version + 1,
+                            updated_at = statement_timestamp()
+                        WHERE provider_id = :providerId
+                          AND version = :expectedVersion
+                          AND verification_status = 'PENDING'
+                        RETURNING provider_id, display_name, status, verification_status,
+                                  version, eligibility_version, created_at, updated_at
+                        """)
+                .param("providerId", providerId)
+                .param("expectedVersion", expectedVersion)
+                .param("targetStatus", targetStatus)
+                .query(this::mapOrganization)
+                .optional();
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void insertVerificationDecision(ProviderVerificationDecisionRecord decision) {
+        jdbcClient.sql("""
+                        INSERT INTO provider_verification_decision (
+                            decision_id, provider_id, submission_id, decided_by_account_id,
+                            decision, decision_note
+                        )
+                        VALUES (
+                            :decisionId, :providerId, :submissionId, :decidedByAccountId,
+                            :decision, :decisionNote
+                        )
+                        """)
+                .param("decisionId", decision.decisionId())
+                .param("providerId", decision.providerId())
+                .param("submissionId", decision.submissionId())
+                .param("decidedByAccountId", decision.decidedByAccountId())
+                .param("decision", decision.decision().name())
+                .param("decisionNote", decision.note())
+                .update();
     }
 
     private void insertStaffMembership(ProviderStaffMembership membership) {

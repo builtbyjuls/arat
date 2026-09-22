@@ -12,9 +12,10 @@ The domain model makes four facts explicit:
 
 The model favors visible domain constraints over generic abstractions. The
 names below are target design terms and do not imply that implementation is
-already complete. M2 provider profiles and verification submissions are
-implemented; finalizations, requests, recipients, and outbox capture are
-planned next. Offers, votes, selection, confirmation, and matches begin in M3;
+already complete. M2 provider profiles, verification submissions, and operator
+decisions are implemented; finalizations, requests, recipients, and outbox
+capture are planned next. Offers, votes, selection, confirmation, and matches
+begin in M3;
 relay and delivery begin in M4.
 
 ## Bounded contexts
@@ -638,6 +639,9 @@ Full profile replacement advances provider version only. Every actual
 verification-state transition advances provider and eligibility versions once.
 An exact replay does not advance either version. Existing recipient grants
 retain captured eligibility versions permanently, including after restoration.
+While verification is `PENDING`, the provider holds an exact current-submission
+reference. A decision must name that submission and clears the reference when
+it accepts or rejects, so a delayed command cannot decide a later resubmission.
 Profile edits affect future matching without rewriting old grants or advancing
 eligibility version. Contact channels are outside the M2 profile.
 

@@ -505,6 +505,18 @@ Every actual verification-state transition increments provider version and
 monotonic eligibility version exactly once. Exact replay increments neither.
 Restoration never restores a prior eligibility version.
 
+A verification decision names the exact current submission that the operator
+reviewed. A stale submission ID is rejected without deciding a later
+resubmission:
+
+~~~json
+{
+  "submissionId": "submission-uuid",
+  "decision": "ACCEPT",
+  "note": "Optional bounded operator note."
+}
+~~~
+
 ### Finalize requirements
 
 ~~~http
@@ -927,8 +939,8 @@ Planned operational endpoints:
 - M4 outbox and inbox backlog summaries for authorized operators
 - M4 redrive command for a failed notification after operator review
 
-Provider verification submission is implemented. Operator decisions,
-suspension, and restoration remain planned:
+Provider verification submission and operator decisions are implemented.
+Suspension and restoration remain planned:
 
 ~~~http
 POST /api/v1/providers/{providerId}/verification-submissions

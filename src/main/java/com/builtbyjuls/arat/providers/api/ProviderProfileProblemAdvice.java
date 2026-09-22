@@ -10,7 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-@RestControllerAdvice(assignableTypes = ProviderController.class)
+@RestControllerAdvice(assignableTypes = {ProviderController.class, ProviderOperationsController.class})
 class ProviderProfileProblemAdvice {
 
     private final ApiProblemFactory problemFactory;
@@ -61,6 +61,21 @@ class ProviderProfileProblemAdvice {
                     "FORBIDDEN_ROLE", "Forbidden role", "An administrator role is required.");
             case INVALID_PROVIDER_STATE -> write(request, response, HttpStatus.CONFLICT,
                     "INVALID_PROVIDER_STATE", "Invalid provider state", "The provider cannot submit verification evidence in its current state.");
+        }
+    }
+
+    @ExceptionHandler(ProviderVerificationDecisionException.class)
+    void verificationDecisionFailure(
+            ProviderVerificationDecisionException exception,
+            HttpServletRequest request,
+            HttpServletResponse response) throws IOException {
+        switch (exception.reason()) {
+            case FORBIDDEN_PLATFORM_ROLE -> write(request, response, HttpStatus.FORBIDDEN,
+                    "FORBIDDEN_PLATFORM_ROLE", "Forbidden platform role", "A platform operator role is required.");
+            case PRIVATE_RESOURCE_NOT_FOUND -> write(request, response, HttpStatus.NOT_FOUND,
+                    "PRIVATE_RESOURCE_NOT_FOUND", "Private resource not found", "The requested private resource was not found.");
+            case INVALID_PROVIDER_STATE -> write(request, response, HttpStatus.CONFLICT,
+                    "INVALID_PROVIDER_STATE", "Invalid provider state", "The provider cannot be decided in its current state.");
         }
     }
 

@@ -59,9 +59,6 @@ class ProviderVerificationSubmissionIT extends PostgreSqlIntegrationTest {
         removeAuditFailureTrigger();
         jdbcClient.sql("DELETE FROM audit_event").update();
         jdbcClient.sql("DELETE FROM idempotency_record").update();
-        jdbcClient.sql("TRUNCATE TABLE provider_verification_evidence_reference, provider_verification_submission").update();
-        jdbcClient.sql("DELETE FROM provider_staff_membership").update();
-        jdbcClient.sql("DELETE FROM provider_organization").update();
         jdbcClient.sql("DELETE FROM identity_account WHERE account_id IN (:adminId, :staffId, :otherAdminId, :outsiderId)")
                 .param("adminId", ADMIN_ID)
                 .param("staffId", STAFF_ID)
@@ -87,6 +84,19 @@ class ProviderVerificationSubmissionIT extends PostgreSqlIntegrationTest {
     void removeAuditFailureTrigger() {
         jdbcClient.sql("DROP TRIGGER IF EXISTS fail_provider_verification_audit ON audit_event").update();
         jdbcClient.sql("DROP FUNCTION IF EXISTS test_fail_provider_verification_audit()").update();
+        truncateProviderTables();
+    }
+
+    private void truncateProviderTables() {
+        jdbcClient.sql("""
+                TRUNCATE TABLE provider_verification_decision,
+                    provider_verification_evidence_reference,
+                    provider_verification_submission,
+                    provider_service_area,
+                    provider_supported_category,
+                    provider_staff_membership,
+                    provider_organization
+                """).update();
     }
 
     @Test
@@ -247,7 +257,19 @@ class ProviderVerificationSubmissionIT extends PostgreSqlIntegrationTest {
     private void resetVerificationState(String status) {
         jdbcClient.sql("""
                 UPDATE provider_organization
-                SET verification_status = :status, version = 1, eligibility_version = 1
+                SET verification_status = :status,
+                    current_verification_submission_id = CASE
+                        WHEN :status = 'PENDING' THEN (
+                            SELECT submission_id
+                            FROM provider_verification_submission
+                            WHERE provider_id = :providerId
+                            ORDER BY submitted_at DESC, submission_id DESC
+                            LIMIT 1
+                        )
+                        ELSE NULL
+                    END,
+                    version = 1,
+                    eligibility_version = 1
                 WHERE provider_id = :providerId
                 """).param("status", status).param("providerId", PROVIDER_ID).update();
     }
