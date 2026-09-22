@@ -2,6 +2,7 @@ package com.builtbyjuls.arat.architecture;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.builtbyjuls.arat.matching.api.MatchingAccess;
 import com.builtbyjuls.arat.providers.api.ProviderEligibilityAccess;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
@@ -66,6 +67,12 @@ class ModuleBoundaryRulesTest {
     @Test
     void providerEligibilityBoundaryDoesNotExposeInfrastructureTypes() {
         assertThat(ProviderEligibilityAccess.class.getDeclaredMethods())
+                .allSatisfy(this::assertDoesNotExposeInfrastructureType);
+    }
+
+    @Test
+    void matchingBoundaryDoesNotExposeInfrastructureTypes() {
+        assertThat(MatchingAccess.class.getDeclaredMethods())
                 .allSatisfy(this::assertDoesNotExposeInfrastructureType);
     }
 
