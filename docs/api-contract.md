@@ -370,19 +370,6 @@ GET /api/v1/plans/{planId}/preferences
 This collection is visible only to active group members and has no collection
 ETag.
 
-### Cancel a plan
-
-~~~http
-POST /api/v1/plans/{planId}/cancellation
-Idempotency-Key: ...
-If-Match: "plan-version"
-~~~
-
-Cancellation is terminal for the plan. Its current request becomes
-`CANCELLED`, remaining `SUBMITTED` offers become `NOT_SELECTED`, and any
-pending match becomes `CANCELLED` atomically. A new outing attempt uses a new
-plan.
-
 ### M1 command outcomes
 
 | Command | Success | Visible authorization or state errors |
@@ -414,6 +401,10 @@ a new key with the current cancelled-plan ETag reaches state validation and
 returns 409.
 
 ## Phase 2 planning extension
+
+The provider-request, offer, and match workflows described below are planned
+later-phase behavior. Their records and cancellation cascades do not exist
+during M1.
 
 ### Finalize requirements
 
@@ -624,7 +615,7 @@ may replace that vote while voting remains open. The first vote uses
 `If-None-Match: *`; a replacement uses `If-Match: "vote-version"`. Successful
 reads and writes return the current vote ETag.
 
-## Match APIs
+## Later-phase Match APIs
 
 ### Select an offer
 
