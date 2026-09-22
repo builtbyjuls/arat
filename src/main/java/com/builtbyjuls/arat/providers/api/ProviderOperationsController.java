@@ -2,6 +2,7 @@ package com.builtbyjuls.arat.providers.api;
 
 import com.builtbyjuls.arat.identity.api.CurrentActor;
 import com.builtbyjuls.arat.providers.application.ProviderCreationService;
+import com.builtbyjuls.arat.providers.application.ProviderSuspensionService;
 import com.builtbyjuls.arat.providers.application.ProviderVerificationDecisionService;
 import com.builtbyjuls.arat.providers.domain.ProviderVerificationDecision;
 import com.builtbyjuls.arat.web.ApiProblemResponse;
@@ -39,10 +40,15 @@ public class ProviderOperationsController {
 
     private final CurrentActor currentActor;
     private final ProviderVerificationDecisionService decisionService;
+    private final ProviderSuspensionService suspensionService;
 
-    public ProviderOperationsController(CurrentActor currentActor, ProviderVerificationDecisionService decisionService) {
+    public ProviderOperationsController(
+            CurrentActor currentActor,
+            ProviderVerificationDecisionService decisionService,
+            ProviderSuspensionService suspensionService) {
         this.currentActor = currentActor;
         this.decisionService = decisionService;
+        this.suspensionService = suspensionService;
     }
 
     @PostMapping("/{providerId}/verification-decisions")
@@ -77,6 +83,36 @@ public class ProviderOperationsController {
                 .body(decision);
     }
 
+    @PostMapping("/{providerId}/suspension")
+    @Operation(operationId = "suspendProvider", summary = "Suspend a verified provider")
+    @SecurityRequirement(name = "bearerAuth")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Provider suspended", headers = @Header(name = "ETag", description = "Current provider version"), content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ProviderSuspensionRepresentation.class))),
+        @ApiResponse(responseCode = "400", description = "Missing or malformed request", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "401", description = "Authentication required", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "403", description = "Platform operator role required", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "404", description = "Private resource not found", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "409", description = "Provider state conflict or idempotency key reused", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "422", description = "Validation failed", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class)))
+    })
+    public ResponseEntity<ProviderSuspensionRepresentation> suspend(
+            @PathVariable UUID providerId,
+            @Valid @RequestBody ProviderSuspensionRequest request,
+            @RequestHeader("Idempotency-Key") @NotBlank @Size(max = 255) String idempotencyKey,
+            HttpServletRequest servletRequest) {
+        var actor = currentActor.requireAuthenticatedActor();
+        var suspension = suspensionService.suspend(new SuspendProviderCommand(
+                actor.accountId(),
+                actor.platformRoles(),
+                providerId,
+                idempotencyKey,
+                request.reason(),
+                (String) servletRequest.getAttribute(CorrelationIdFilter.REQUEST_ATTRIBUTE)));
+        return ResponseEntity.ok()
+                .eTag(ProviderCreationService.etag(suspension.providerVersion()))
+                .body(suspension);
+    }
+
     public record ProviderVerificationDecisionRequest(
             @NotNull UUID submissionId,
             @NotNull ProviderVerificationDecision decision,
@@ -85,6 +121,15 @@ public class ProviderOperationsController {
         @AssertTrue(message = "note must contain from 1 to 500 characters after trimming")
         public boolean hasValidNote() {
             return note == null || (!note.strip().isEmpty() && note.strip().length() <= 500);
+        }
+    }
+
+    public record ProviderSuspensionRequest(
+            @NotBlank @Size(max = 500) String reason) {
+
+        @AssertTrue(message = "reason must contain from 1 to 500 characters after trimming")
+        public boolean hasValidReason() {
+            return reason == null || (!reason.strip().isEmpty() && reason.strip().length() <= 500);
         }
     }
 }

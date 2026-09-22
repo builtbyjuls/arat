@@ -89,7 +89,8 @@ class ProviderVerificationSubmissionIT extends PostgreSqlIntegrationTest {
 
     private void truncateProviderTables() {
         jdbcClient.sql("""
-                TRUNCATE TABLE provider_verification_decision,
+                TRUNCATE TABLE provider_suspension,
+                    provider_verification_decision,
                     provider_verification_evidence_reference,
                     provider_verification_submission,
                     provider_service_area,

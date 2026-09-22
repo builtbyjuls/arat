@@ -1,7 +1,8 @@
 # Consistency and Concurrency
 
-Status: M1 collaboration proof and provider verification decisions implemented;
-marketplace, messaging, billing, and load evidence remain target design.
+Status: M1 collaboration proof and provider verification decisions and
+suspension implemented; marketplace, messaging, billing, and load evidence
+remain target design.
 
 This document defines the correctness contract for Arat?. M1 group and planning
 races have executable PostgreSQL evidence in
