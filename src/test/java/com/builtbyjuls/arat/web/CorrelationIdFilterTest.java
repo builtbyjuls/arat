@@ -121,7 +121,7 @@ class CorrelationIdFilterTest {
         assertThat(event.getFormattedMessage()).isEqualTo("HTTP request completed");
         assertThat(event.getKeyValuePairs())
                 .extracting(pair -> pair.key)
-                .containsExactlyInAnyOrder("method", "path", "status", "elapsedMs", "correlationId");
+                .containsExactlyInAnyOrder("method", "path", "status", "elapsedMs");
         assertThat(event.getKeyValuePairs())
                 .extracting(pair -> pair.value)
                 .doesNotContain(

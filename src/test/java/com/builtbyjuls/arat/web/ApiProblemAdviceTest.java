@@ -154,6 +154,7 @@ class ApiProblemAdviceTest {
         assertThat(logAppender.list).hasSize(1);
         var event = logAppender.list.getFirst();
         assertThat(event.getMDCPropertyMap()).containsEntry(CorrelationIdFilter.MDC_KEY, CORRELATION_ID);
+        assertThat(event.getKeyValuePairs()).isNullOrEmpty();
         assertThat(event.getThrowableProxy().getMessage()).isEqualTo("secret implementation message");
     }
 

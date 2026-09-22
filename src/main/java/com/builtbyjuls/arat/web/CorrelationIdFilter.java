@@ -52,7 +52,6 @@ public class CorrelationIdFilter extends OncePerRequestFilter {
                         .addKeyValue("path", safePath(request))
                         .addKeyValue("status", status)
                         .addKeyValue("elapsedMs", (System.nanoTime() - startedAt) / 1_000_000)
-                        .addKeyValue(MDC_KEY, correlationId)
                         .log("HTTP request completed");
             } finally {
                 MDC.remove(MDC_KEY);

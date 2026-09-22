@@ -130,7 +130,6 @@ public class ApiProblemAdvice {
     void internalError(
             Throwable exception, HttpServletRequest request, HttpServletResponse response) throws IOException {
         LOGGER.atError()
-                .addKeyValue(CorrelationIdFilter.MDC_KEY, request.getAttribute(CorrelationIdFilter.REQUEST_ATTRIBUTE))
                 .setCause(exception)
                 .log("Unhandled HTTP request failure");
         write(request, response, HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "Internal error", "The server could not complete the request.", List.of());
