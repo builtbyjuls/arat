@@ -301,7 +301,7 @@ class PlanCancellationIT extends PostgreSqlIntegrationTest {
                         .extracting(com.builtbyjuls.arat.planning.api.PreferenceException::reason)
                         .isEqualTo(com.builtbyjuls.arat.planning.api.PreferenceException.Reason.INVALID_PLAN_STATE);
                 assertThat(preferenceVersion()).isOne();
-                assertThat(preferenceNote()).isNull();
+                assertThat(preferenceNoteIsNull()).isTrue();
             }
         }
         assertThat(planState()).isEqualTo(PlanState.CANCELLED);
@@ -460,6 +460,11 @@ class PlanCancellationIT extends PostgreSqlIntegrationTest {
     private String preferenceNote() {
         return jdbcClient.sql("SELECT private_note FROM planning_plan_preference WHERE plan_id = :planId AND account_id = :accountId")
                 .param("planId", PLAN_ID).param("accountId", MEMBER_ID).query(String.class).single();
+    }
+
+    private boolean preferenceNoteIsNull() {
+        return jdbcClient.sql("SELECT private_note IS NULL FROM planning_plan_preference WHERE plan_id = :planId AND account_id = :accountId")
+                .param("planId", PLAN_ID).param("accountId", MEMBER_ID).query(Boolean.class).single();
     }
 
     private long count(String sql) {
