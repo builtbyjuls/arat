@@ -3,6 +3,7 @@ package com.builtbyjuls.arat.architecture;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.builtbyjuls.arat.matching.api.MatchingAccess;
+import com.builtbyjuls.arat.messaging.api.MessagingAccess;
 import com.builtbyjuls.arat.providers.api.ProviderEligibilityAccess;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
@@ -16,6 +17,7 @@ class ModuleBoundaryRulesTest {
     private static final String APPLICATION_PACKAGE = "com.builtbyjuls.arat";
     private static final String ILLEGAL_FIXTURE_PACKAGE = APPLICATION_PACKAGE + ".architecture.fixture.illegal";
     private static final String CYCLE_FIXTURE_PACKAGE = APPLICATION_PACKAGE + ".architecture.fixture.cycle";
+    private static final String MESSAGING_FIXTURE_PACKAGE = APPLICATION_PACKAGE + ".architecture.fixture.messaging";
 
     @Test
     void productionClassesRespectModuleBoundaries() {
@@ -25,6 +27,7 @@ class ModuleBoundaryRulesTest {
 
         ModuleBoundaryRules.businessModulesUseOnlyOtherModuleApis(APPLICATION_PACKAGE).check(classes);
         ModuleBoundaryRules.platformIsIndependentOfBusinessModules(APPLICATION_PACKAGE).check(classes);
+        ModuleBoundaryRules.messagingIsIndependentOfDomainModules(APPLICATION_PACKAGE).check(classes);
         ModuleBoundaryRules.businessModuleSlicesAreCycleFree(APPLICATION_PACKAGE).check(classes);
     }
 
@@ -65,6 +68,19 @@ class ModuleBoundaryRulesTest {
     }
 
     @Test
+    void detectsMessagingDependencyOnAForbiddenPublicApi() {
+        var classes = new ClassFileImporter().importPackages(MESSAGING_FIXTURE_PACKAGE);
+
+        var result = ModuleBoundaryRules.messagingIsIndependentOfDomainModules(MESSAGING_FIXTURE_PACKAGE)
+                .evaluate(classes);
+
+        assertThat(result.hasViolation()).isTrue();
+        assertThat(result.getFailureReport().getDetails())
+                .anyMatch(detail -> detail.contains("messaging.api.ForbiddenMessagingDependency")
+                        && detail.contains("groups.api.GroupsApi"));
+    }
+
+    @Test
     void providerEligibilityBoundaryDoesNotExposeInfrastructureTypes() {
         assertThat(ProviderEligibilityAccess.class.getDeclaredMethods())
                 .allSatisfy(this::assertDoesNotExposeInfrastructureType);
@@ -73,6 +89,12 @@ class ModuleBoundaryRulesTest {
     @Test
     void matchingBoundaryDoesNotExposeInfrastructureTypes() {
         assertThat(MatchingAccess.class.getDeclaredMethods())
+                .allSatisfy(this::assertDoesNotExposeInfrastructureType);
+    }
+
+    @Test
+    void messagingBoundaryDoesNotExposeInfrastructureTypes() {
+        assertThat(MessagingAccess.class.getDeclaredMethods())
                 .allSatisfy(this::assertDoesNotExposeInfrastructureType);
     }
 

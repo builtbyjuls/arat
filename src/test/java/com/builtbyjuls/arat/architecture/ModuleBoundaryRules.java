@@ -17,6 +17,8 @@ import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.sli
 final class ModuleBoundaryRules {
 
     private static final Set<String> TECHNICAL_SUPPORT_PACKAGES = Set.of("platform", "web");
+    private static final Set<String> MESSAGING_FORBIDDEN_DEPENDENCIES = Set.of(
+            "groups", "planning", "marketplace", "providers");
 
     private ModuleBoundaryRules() {
     }
@@ -56,6 +58,28 @@ final class ModuleBoundaryRules {
                                                 + dependency.getTargetClass().getFullName()));
                             }
                         });
+                    }
+                });
+    }
+
+    static ArchRule messagingIsIndependentOfDomainModules(String rootPackage) {
+        return classes().that(new DescribedPredicate<JavaClass>("belong to Messaging") {
+                    @Override
+                    public boolean test(JavaClass javaClass) {
+                        return businessModuleName(javaClass, rootPackage).filter("messaging"::equals).isPresent();
+                    }
+                })
+                .should(new ArchCondition<JavaClass>("not depend on Groups, Planning, Marketplace, or Providers") {
+                    @Override
+                    public void check(JavaClass source, ConditionEvents events) {
+                        source.getDirectDependenciesFromSelf().forEach(dependency ->
+                                businessModuleName(dependency.getTargetClass(), rootPackage)
+                                        .filter(MESSAGING_FORBIDDEN_DEPENDENCIES::contains)
+                                        .ifPresent(targetModule -> events.add(SimpleConditionEvent.violated(
+                                                source,
+                                                source.getFullName() + " depends on forbidden "
+                                                        + targetModule + " module "
+                                                        + dependency.getTargetClass().getFullName()))));
                     }
                 });
     }
