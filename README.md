@@ -16,6 +16,9 @@ private collaboration workflow. Marketplace workflows remain planned, and the
 documents describe the evidence required before making performance or
 scalability claims beyond the implemented foundation.
 
+Current stage: M1 is complete. M2, versioned provider requests and recipient
+privacy, is next. See the [Project Roadmap](docs/roadmap.md).
+
 ## Why this project exists
 
 Most group outings begin in a chat and stall:
@@ -191,6 +194,7 @@ because its transaction and locking behavior is part of the product.
 ## Documentation map
 
 - [Product Scope](docs/product-scope.md)
+- [Project Roadmap](docs/roadmap.md)
 - [Domain Model](docs/domain-model.md)
 - [Architecture](docs/architecture.md)
 - [API Contract](docs/api-contract.md)
@@ -207,7 +211,7 @@ because its transaction and locking behavior is part of the product.
 | Application foundation | Implemented: runnable Spring Boot, local auth, health, metrics, Compose, and CI smoke checks |
 | Database schema and migrations | Implemented: Flyway baseline and PostgreSQL test foundation |
 | Planning workflow | Implemented: private groups, invitations, collaborative plans, requirement replacement, member preferences, and cancellation |
-| Marketplace workflows | Not started |
+| Marketplace workflows | Next: M2 versioned provider requests and recipient privacy |
 | Billing simulation | Not started |
 | Concurrency evidence | Implemented for M1 collaboration; marketplace concurrency work remains planned |
 | Performance measurements | Not started |
