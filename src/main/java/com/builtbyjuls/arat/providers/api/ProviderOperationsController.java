@@ -2,6 +2,7 @@ package com.builtbyjuls.arat.providers.api;
 
 import com.builtbyjuls.arat.identity.api.CurrentActor;
 import com.builtbyjuls.arat.providers.application.ProviderCreationService;
+import com.builtbyjuls.arat.providers.application.ProviderRestorationService;
 import com.builtbyjuls.arat.providers.application.ProviderSuspensionService;
 import com.builtbyjuls.arat.providers.application.ProviderVerificationDecisionService;
 import com.builtbyjuls.arat.providers.domain.ProviderVerificationDecision;
@@ -41,14 +42,17 @@ public class ProviderOperationsController {
     private final CurrentActor currentActor;
     private final ProviderVerificationDecisionService decisionService;
     private final ProviderSuspensionService suspensionService;
+    private final ProviderRestorationService restorationService;
 
     public ProviderOperationsController(
             CurrentActor currentActor,
             ProviderVerificationDecisionService decisionService,
-            ProviderSuspensionService suspensionService) {
+            ProviderSuspensionService suspensionService,
+            ProviderRestorationService restorationService) {
         this.currentActor = currentActor;
         this.decisionService = decisionService;
         this.suspensionService = suspensionService;
+        this.restorationService = restorationService;
     }
 
     @PostMapping("/{providerId}/verification-decisions")
@@ -111,6 +115,34 @@ public class ProviderOperationsController {
         return ResponseEntity.ok()
                 .eTag(ProviderCreationService.etag(suspension.providerVersion()))
                 .body(suspension);
+    }
+
+    @PostMapping("/{providerId}/restoration")
+    @Operation(operationId = "restoreProvider", summary = "Restore a suspended provider")
+    @SecurityRequirement(name = "bearerAuth")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Provider restored", headers = @Header(name = "ETag", description = "Current provider version"), content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ProviderRestorationRepresentation.class))),
+        @ApiResponse(responseCode = "400", description = "Missing or malformed request", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "401", description = "Authentication required", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "403", description = "Platform operator role required", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "404", description = "Private resource not found", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "409", description = "Provider state conflict or idempotency key reused", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "422", description = "Validation failed", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class)))
+    })
+    public ResponseEntity<ProviderRestorationRepresentation> restore(
+            @PathVariable UUID providerId,
+            @RequestHeader("Idempotency-Key") @NotBlank @Size(max = 255) String idempotencyKey,
+            HttpServletRequest servletRequest) {
+        var actor = currentActor.requireAuthenticatedActor();
+        var restoration = restorationService.restore(new RestoreProviderCommand(
+                actor.accountId(),
+                actor.platformRoles(),
+                providerId,
+                idempotencyKey,
+                (String) servletRequest.getAttribute(CorrelationIdFilter.REQUEST_ATTRIBUTE)));
+        return ResponseEntity.ok()
+                .eTag(ProviderCreationService.etag(restoration.providerVersion()))
+                .body(restoration);
     }
 
     public record ProviderVerificationDecisionRequest(

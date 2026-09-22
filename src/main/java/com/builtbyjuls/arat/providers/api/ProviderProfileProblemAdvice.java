@@ -94,6 +94,21 @@ class ProviderProfileProblemAdvice {
         }
     }
 
+    @ExceptionHandler(ProviderRestorationException.class)
+    void restorationFailure(
+            ProviderRestorationException exception,
+            HttpServletRequest request,
+            HttpServletResponse response) throws IOException {
+        switch (exception.reason()) {
+            case FORBIDDEN_PLATFORM_ROLE -> write(request, response, HttpStatus.FORBIDDEN,
+                    "FORBIDDEN_PLATFORM_ROLE", "Forbidden platform role", "A platform operator role is required.");
+            case PRIVATE_RESOURCE_NOT_FOUND -> write(request, response, HttpStatus.NOT_FOUND,
+                    "PRIVATE_RESOURCE_NOT_FOUND", "Private resource not found", "The requested private resource was not found.");
+            case INVALID_PROVIDER_STATE -> write(request, response, HttpStatus.CONFLICT,
+                    "INVALID_PROVIDER_STATE", "Invalid provider state", "The provider cannot be restored in its current state.");
+        }
+    }
+
     private void write(
             HttpServletRequest request,
             HttpServletResponse response,

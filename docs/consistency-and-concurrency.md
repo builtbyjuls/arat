@@ -1,7 +1,7 @@
 # Consistency and Concurrency
 
-Status: M1 collaboration proof and provider verification decisions and
-suspension implemented; marketplace, messaging, billing, and load evidence
+Status: M1 collaboration proof and provider verification decisions, suspension,
+and restoration implemented; marketplace, messaging, billing, and load evidence
 remain target design.
 
 This document defines the correctness contract for Arat?. M1 group and planning

@@ -660,7 +660,7 @@ worker; delayed cleanup cannot make an expired request actionable.
 ### M2 command outcomes and stable problems
 
 Provider creation, reads, profile replacement, verification submission and
-decision, and suspension are implemented. Remaining entries are planned.
+decision, suspension, and restoration are implemented. Remaining entries are planned.
 Common malformed syntax and authentication outcomes
 remain 400 and 401. Required missing, malformed, and stale version preconditions
 return 428 `PRECONDITION_REQUIRED`, 400 `INVALID_PRECONDITION`, and 412
@@ -940,8 +940,8 @@ Planned operational endpoints:
 - M4 outbox and inbox backlog summaries for authorized operators
 - M4 redrive command for a failed notification after operator review
 
-Provider verification submission, operator decisions, and suspension are
-implemented. Restoration remains planned:
+Provider verification submission, operator decisions, suspension, and restoration are
+implemented:
 
 ~~~http
 POST /api/v1/providers/{providerId}/verification-submissions

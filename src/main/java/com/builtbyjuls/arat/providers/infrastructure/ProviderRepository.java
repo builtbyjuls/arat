@@ -298,6 +298,26 @@ public class ProviderRepository {
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
+    public Optional<ProviderOrganization> restoreSuspendedProvider(UUID providerId, long expectedVersion) {
+        return jdbcClient.sql("""
+                        UPDATE provider_organization
+                        SET verification_status = 'VERIFIED',
+                            version = version + 1,
+                            eligibility_version = eligibility_version + 1,
+                            updated_at = statement_timestamp()
+                        WHERE provider_id = :providerId
+                          AND version = :expectedVersion
+                          AND verification_status = 'SUSPENDED'
+                        RETURNING provider_id, display_name, status, verification_status,
+                                  version, eligibility_version, created_at, updated_at
+                        """)
+                .param("providerId", providerId)
+                .param("expectedVersion", expectedVersion)
+                .query(this::mapOrganization)
+                .optional();
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
     public void insertSuspension(ProviderSuspension suspension) {
         jdbcClient.sql("""
                         INSERT INTO provider_suspension (

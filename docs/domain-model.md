@@ -13,7 +13,7 @@ The domain model makes four facts explicit:
 The model favors visible domain constraints over generic abstractions. The
 names below are target design terms and do not imply that implementation is
 already complete. M2 provider profiles, verification submissions, operator
-decisions, and suspension are implemented; restoration, finalizations,
+decisions, suspension, and restoration are implemented; finalizations,
 requests, recipients, and outbox capture are planned next. Offers, votes,
 selection, confirmation, and matches
 begin in M3;
