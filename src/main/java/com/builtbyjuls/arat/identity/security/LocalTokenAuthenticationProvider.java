@@ -6,7 +6,6 @@ import java.security.MessageDigest;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -20,13 +19,18 @@ final class LocalTokenAuthenticationProvider implements AuthenticationProvider {
         var ownerToken = token(properties, "owner");
         var memberToken = requiredToken(properties, "member");
         var outsiderToken = requiredToken(properties, "outsider");
-        if (new HashSet<>(List.of(ownerToken, memberToken, outsiderToken)).size() != 3) {
+        var providerToken = requiredToken(properties, "provider");
+        var operatorToken = requiredToken(properties, "operator");
+        var localTokens = List.of(ownerToken, memberToken, outsiderToken, providerToken, operatorToken);
+        if (new HashSet<>(localTokens).size() != localTokens.size()) {
             throw new IllegalStateException("Local principal tokens must be distinct.");
         }
         expectedBearerTokens = Map.of(
-                "10000000-0000-4000-8000-000000000001", ownerToken.getBytes(StandardCharsets.UTF_8),
-                "10000000-0000-4000-8000-000000000002", memberToken.getBytes(StandardCharsets.UTF_8),
-                "10000000-0000-4000-8000-000000000003", outsiderToken.getBytes(StandardCharsets.UTF_8));
+                LocalAccountFixtures.OWNER.accountId().toString(), ownerToken.getBytes(StandardCharsets.UTF_8),
+                LocalAccountFixtures.MEMBER.accountId().toString(), memberToken.getBytes(StandardCharsets.UTF_8),
+                LocalAccountFixtures.OUTSIDER.accountId().toString(), outsiderToken.getBytes(StandardCharsets.UTF_8),
+                LocalAccountFixtures.PROVIDER.accountId().toString(), providerToken.getBytes(StandardCharsets.UTF_8),
+                LocalAccountFixtures.OPERATOR.accountId().toString(), operatorToken.getBytes(StandardCharsets.UTF_8));
     }
 
     @Override
@@ -37,7 +41,11 @@ final class LocalTokenAuthenticationProvider implements AuthenticationProvider {
                 .map(Map.Entry::getKey)
                 .findFirst()
                 .orElseThrow(() -> new BadCredentialsException("Invalid bearer token."));
-        var actor = new AuthenticatedActor(UUID.fromString(accountId), java.util.Set.of());
+        var account = LocalAccountFixtures.all().stream()
+                .filter(candidate -> candidate.accountId().toString().equals(accountId))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("Local principal account is not configured."));
+        var actor = new AuthenticatedActor(account.accountId(), LocalAccountFixtures.platformRoles(account));
         return new UsernamePasswordAuthenticationToken(actor, null, List.of());
     }
 

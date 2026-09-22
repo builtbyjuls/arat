@@ -78,10 +78,12 @@ class MilestoneOneJourneyIT extends PostgreSqlIntegrationTest {
         jdbcClient.sql("DELETE FROM group_invitation").update();
         jdbcClient.sql("DELETE FROM group_membership").update();
         jdbcClient.sql("DELETE FROM group_account").update();
-        jdbcClient.sql("DELETE FROM identity_account WHERE account_id IN (:ownerId, :memberId, :outsiderId)")
+        jdbcClient.sql("DELETE FROM identity_account WHERE account_id IN (:ownerId, :memberId, :outsiderId, :providerId, :operatorId)")
                 .param("ownerId", LocalAccountFixtures.OWNER.accountId())
                 .param("memberId", LocalAccountFixtures.MEMBER.accountId())
                 .param("outsiderId", LocalAccountFixtures.OUTSIDER.accountId())
+                .param("providerId", LocalAccountFixtures.PROVIDER.accountId())
+                .param("operatorId", LocalAccountFixtures.OPERATOR.accountId())
                 .update();
         for (var account : LocalAccountFixtures.all()) {
             jdbcClient.sql("INSERT INTO identity_account (account_id, display_name) VALUES (:accountId, :displayName)")

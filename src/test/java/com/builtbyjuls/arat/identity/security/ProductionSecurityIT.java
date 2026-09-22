@@ -47,6 +47,11 @@ class ProductionSecurityIT extends PostgreSqlIntegrationTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$.code").value("AUTHENTICATION_REQUIRED"));
+
+        mockMvc.perform(get("/api/v1/dev/whoami")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer arat-local-operator-token"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("AUTHENTICATION_REQUIRED"));
     }
 
     @Test

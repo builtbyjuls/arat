@@ -1,6 +1,8 @@
 package com.builtbyjuls.arat.identity.security;
 
 import com.builtbyjuls.arat.identity.api.CurrentActor;
+import com.builtbyjuls.arat.identity.api.PlatformRole;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.context.annotation.Profile;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,9 +22,10 @@ class LocalDevelopmentController {
 
     @GetMapping("/whoami")
     WhoAmIResponse whoami() {
-        return new WhoAmIResponse(currentActor.requireAuthenticatedActor().accountId());
+        var actor = currentActor.requireAuthenticatedActor();
+        return new WhoAmIResponse(actor.accountId(), actor.platformRoles());
     }
 
-    record WhoAmIResponse(UUID actorId) {
+    record WhoAmIResponse(UUID actorId, Set<PlatformRole> platformRoles) {
     }
 }

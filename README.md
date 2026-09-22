@@ -271,8 +271,10 @@ curl -H 'Authorization: Bearer arat-local-owner-token' \
   http://localhost:8080/api/v1/dev/whoami
 ~~~
 
-Use `arat-local-member-token` or `arat-local-outsider-token` to select the other
-fixed local accounts. The tokens and probe are unavailable outside the `local` profile. The `prod`
+Use `arat-local-member-token`, `arat-local-outsider-token`, or
+`arat-local-provider-token` to select the other non-operator fixed local
+accounts. Use `arat-local-operator-token` to select the local platform operator
+for administrative scenarios. The tokens and probe are unavailable outside the `local` profile. The `prod`
 profile cannot be combined with `local` or `compose`. Stop the host application
 with `Ctrl+C`, then stop the database with `docker compose stop postgres`.
 

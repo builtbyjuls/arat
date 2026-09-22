@@ -77,7 +77,7 @@ class LocalAuthenticationIT extends PostgreSqlIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.actorId").value(ACTOR_ID))
                 .andExpect(jsonPath("$").isMap())
-                .andExpect(jsonPath("$.platformRoles").doesNotExist())
+                .andExpect(jsonPath("$.platformRoles").isEmpty())
                 .andExpect(header().string(CorrelationIdFilter.HEADER_NAME, CORRELATION_ID));
 
         assertThat(logAppender.list).allSatisfy(event ->
@@ -88,10 +88,27 @@ class LocalAuthenticationIT extends PostgreSqlIntegrationTest {
     void selectsEveryDeterministicLocalPrincipal() throws Exception {
         assertThat(jdbcClient.sql("SELECT count(*) FROM identity_account")
                 .query(Long.class)
-                .single()).isEqualTo(3);
+                .single()).isEqualTo(5);
         assertWhoAmI("arat-local-owner-token", LocalAccountFixtures.OWNER.accountId().toString());
         assertWhoAmI("arat-local-member-token", LocalAccountFixtures.MEMBER.accountId().toString());
         assertWhoAmI("arat-local-outsider-token", LocalAccountFixtures.OUTSIDER.accountId().toString());
+        assertWhoAmI("arat-local-provider-token", LocalAccountFixtures.PROVIDER.accountId().toString());
+        assertWhoAmI("arat-local-operator-token", LocalAccountFixtures.OPERATOR.accountId().toString());
+    }
+
+    @Test
+    void exposesOnlyTheOperatorPlatformRole() throws Exception {
+        mockMvc.perform(get("/api/v1/dev/whoami")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer arat-local-provider-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.platformRoles").isEmpty());
+        mockMvc.perform(get("/api/v1/dev/whoami")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer arat-local-operator-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.actorId").value(LocalAccountFixtures.OPERATOR.accountId().toString()))
+                .andExpect(jsonPath("$.platformRoles").isArray())
+                .andExpect(jsonPath("$.platformRoles").isNotEmpty())
+                .andExpect(jsonPath("$.platformRoles[0]").value("PLATFORM_OPERATOR"));
     }
 
     @Test

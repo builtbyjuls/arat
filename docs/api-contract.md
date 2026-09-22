@@ -24,19 +24,22 @@ remain planned and are labeled explicitly.
 
 ## Local authentication
 
-The `local` profile provides three local-only development tokens. They identify
-the fixed accounts below, each with no platform roles:
+The `local` profile provides five local-only development tokens. They identify
+the fixed accounts below. The provider actor has no platform role; only the
+operator actor has `PLATFORM_OPERATOR`.
 
 | Token | Account | Display name |
 | --- | --- | --- |
 | `arat-local-owner-token` | `10000000-0000-4000-8000-000000000001` | Ari Organizer |
 | `arat-local-member-token` | `10000000-0000-4000-8000-000000000002` | Bea Member |
 | `arat-local-outsider-token` | `10000000-0000-4000-8000-000000000003` | Cruz Outsider |
+| `arat-local-provider-token` | `10000000-0000-4000-8000-000000000004` | Dani Provider |
+| `arat-local-operator-token` | `10000000-0000-4000-8000-000000000005` | Owen Operator |
 
 The Bearer scheme is case-insensitive, while opaque token values are
 case-sensitive. These fake account rows load only under `local`.
-`GET /api/v1/dev/whoami` is available only under `local` and returns only that
-actor UUID as `actorId` to prove the current-actor boundary.
+`GET /api/v1/dev/whoami` is available only under `local` and returns that actor
+UUID as `actorId` plus its platform roles to prove the current-actor boundary.
 
 Every `/api/**` path requires an authenticated principal. Missing, malformed,
 or unknown credentials return a correlated `401 AUTHENTICATION_REQUIRED`
