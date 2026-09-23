@@ -177,7 +177,7 @@ class PlanningRequestAccessIT extends PostgreSqlIntegrationTest {
 
         var cancelled = inTransaction(() -> access.cancel(
                 new CancelPlanRequestCommand(fixture.planId(), 5)));
-        assertThat(cancelled.planVersion()).isEqualTo(6);
+        assertThat(cancelled.plan().version()).isEqualTo(6);
         assertThat(cancelled.cancelledRequest().requestId()).isEqualTo(thirdRequestId);
         assertThat(cancelled.cancelledRequest().state()).isEqualTo("CANCELLED");
         assertPlan(fixture.planId(), PlanState.CANCELLED, null, 6);
@@ -197,7 +197,7 @@ class PlanningRequestAccessIT extends PostgreSqlIntegrationTest {
         var result = inTransaction(() -> access.cancel(
                 new CancelPlanRequestCommand(fixture.planId(), 1)));
 
-        assertThat(result.planVersion()).isEqualTo(2);
+        assertThat(result.plan().version()).isEqualTo(2);
         assertThat(result.cancelledRequest()).isNull();
         assertPlan(fixture.planId(), PlanState.CANCELLED, null, 2);
         assertThat(requestCount(fixture.planId())).isZero();

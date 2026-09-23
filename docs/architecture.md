@@ -184,10 +184,10 @@ application use case that coordinates them.
   verified provider IDs and observed eligibility versions. Marketplace stores
   fixed recipients; Messaging appends per-recipient events in the same caller
   transaction, together with audit and idempotency completion.
-- Marketplace also owns M2 request closure and the existing cancellation route
-  once cancellation is request-aware. It delegates plan/request state changes
-  to Planning, preserving the route without a Planning-to-Marketplace cycle.
-  Closure/cancellation clears the same-plan current pointer and retains history.
+- Marketplace also owns M2 request closure and the request-aware cancellation
+  route. It delegates plan/request state changes to Planning, preserving the
+  route without a Planning-to-Marketplace cycle. Closure/cancellation clears
+  the same-plan current pointer and retains history.
 - From M3, Marketplace also owns offer submission, selection, confirmation,
   decline, vote, and timeout use cases. It calls Groups, Planning, and Providers for
   guarded authority and state changes in the documented lock order, Billing

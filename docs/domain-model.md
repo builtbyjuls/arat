@@ -14,9 +14,9 @@ The model favors visible domain constraints over generic abstractions. The
 names below are target design terms and do not imply that implementation is
 already complete. M2 provider profiles, verification and eligibility
 transitions, requirement finalization, request publication and reads, recipient
-authorization, outbox capture, and manual request closure are implemented.
-Request-aware plan cancellation remains planned. Offers, votes, selection,
-confirmation, and matches begin in M3; relay and delivery begin in M4.
+authorization, outbox capture, manual request closure, and request-aware plan
+cancellation are implemented. Offers, votes, selection, confirmation, and
+matches begin in M3; relay and delivery begin in M4.
 
 ## Bounded contexts
 

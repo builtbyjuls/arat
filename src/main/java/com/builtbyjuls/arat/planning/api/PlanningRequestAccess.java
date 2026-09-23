@@ -131,7 +131,7 @@ public class PlanningRequestAccess {
         if (plan.state() == PlanState.COLLABORATING && plan.currentRequestId() == null) {
             var cancelledPlan = transitionPlan(
                     plan, PlanState.COLLABORATING, null, PlanState.CANCELLED, null);
-            return new PlanRequestCancellation(cancelledPlan.version(), null);
+            return new PlanRequestCancellation(PlanRepresentation.from(cancelledPlan), null, null);
         }
         if (plan.state() != PlanState.OPEN_FOR_OFFERS || plan.currentRequestId() == null) {
             throw failure(PlanningRequestTransitionException.Reason.INVALID_PLAN_STATE);
@@ -145,7 +145,10 @@ public class PlanningRequestAccess {
                 .orElseThrow(() -> failure(PlanningRequestTransitionException.Reason.INVALID_REQUEST_STATE));
         var cancelledPlan = transitionPlan(
                 plan, PlanState.OPEN_FOR_OFFERS, request.requestId(), PlanState.CANCELLED, null);
-        return new PlanRequestCancellation(cancelledPlan.version(), snapshot(cancelledRequest, false));
+        return new PlanRequestCancellation(
+                PlanRepresentation.from(cancelledPlan),
+                snapshot(cancelledRequest, false),
+                cancelledRequest.closedAt());
     }
 
     @Transactional(readOnly = true)

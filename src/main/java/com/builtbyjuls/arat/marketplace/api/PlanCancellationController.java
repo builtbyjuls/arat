@@ -1,16 +1,18 @@
-package com.builtbyjuls.arat.planning.api;
+package com.builtbyjuls.arat.marketplace.api;
 
 import com.builtbyjuls.arat.identity.api.CurrentActor;
-import com.builtbyjuls.arat.planning.application.PlanCancellationService;
-import com.builtbyjuls.arat.planning.application.PlanCreationService;
+import com.builtbyjuls.arat.marketplace.application.PlanCancellationService;
+import com.builtbyjuls.arat.planning.api.CancelPlanCommand;
+import com.builtbyjuls.arat.planning.api.PlanRepresentation;
+import com.builtbyjuls.arat.planning.api.PlanVersionPrecondition;
 import com.builtbyjuls.arat.web.ApiProblemResponse;
 import com.builtbyjuls.arat.web.CorrelationIdFilter;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.enums.ParameterIn;
+import io.swagger.v3.oas.annotations.headers.Header;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
-import io.swagger.v3.oas.annotations.headers.Header;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -43,7 +45,7 @@ public class PlanCancellationController {
     }
 
     @PostMapping("/{planId}/cancellation")
-    @Operation(operationId = "cancelCollaborativePlan", summary = "Cancel a collaborative plan")
+    @Operation(operationId = "cancelCollaborativePlan", summary = "Cancel a plan")
     @SecurityRequirement(name = "bearerAuth")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "Plan cancelled", headers = @Header(name = "ETag", description = "Cancelled plan version"), content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = PlanRepresentation.class))),
@@ -51,7 +53,7 @@ public class PlanCancellationController {
         @ApiResponse(responseCode = "401", description = "Authentication required", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
         @ApiResponse(responseCode = "403", description = "Organizer role required", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
         @ApiResponse(responseCode = "404", description = "Private resource not found", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
-        @ApiResponse(responseCode = "409", description = "Idempotency key reused or plan is not collaborating", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "409", description = "Idempotency key reused or invalid plan state", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
         @ApiResponse(responseCode = "412", description = "Plan version precondition failed", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
         @ApiResponse(responseCode = "422", description = "Validation failed", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
         @ApiResponse(responseCode = "428", description = "Plan version precondition required", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class)))
@@ -70,6 +72,6 @@ public class PlanCancellationController {
                 PlanVersionPrecondition.parseRequiredIfMatch(ifMatch),
                 idempotencyKey,
                 (String) servletRequest.getAttribute(CorrelationIdFilter.REQUEST_ATTRIBUTE)));
-        return ResponseEntity.ok().eTag(PlanCreationService.etag(plan.version())).body(plan);
+        return ResponseEntity.ok().eTag("\"" + plan.version() + "\"").body(plan);
     }
 }

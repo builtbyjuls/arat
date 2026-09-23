@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.builtbyjuls.arat.PostgreSqlIntegrationTest;
 import com.builtbyjuls.arat.identity.api.AuthenticatedActor;
+import com.builtbyjuls.arat.marketplace.application.PlanCancellationService;
 import com.builtbyjuls.arat.planning.api.CancelPlanCommand;
 import com.builtbyjuls.arat.planning.api.CreatePreferenceCommand;
 import com.builtbyjuls.arat.planning.api.CreatePreferenceRequest;
@@ -44,6 +45,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.context.WebApplicationContext;
 import tools.jackson.databind.ObjectMapper;
 
@@ -58,6 +61,9 @@ class PlanCancellationIT extends PostgreSqlIntegrationTest {
     private static final UUID GROUP_ID = UUID.fromString("7a000000-0000-4000-8000-000000000001");
     private static final UUID PLAN_ID = UUID.fromString("7b000000-0000-4000-8000-000000000001");
     private static final UUID WINDOW_ID = UUID.fromString("7c000000-0000-4000-8000-000000000001");
+    private static final UUID REQUEST_ID = UUID.fromString("7d000000-0000-4000-8000-000000000001");
+    private static final UUID FIRST_PROVIDER_ID = UUID.fromString("7e000000-0000-4000-8000-000000000001");
+    private static final UUID SECOND_PROVIDER_ID = UUID.fromString("7e000000-0000-4000-8000-000000000002");
 
     @Autowired
     private WebApplicationContext webApplicationContext;
@@ -77,13 +83,18 @@ class PlanCancellationIT extends PostgreSqlIntegrationTest {
     @Autowired
     private PlanPreferenceService planPreferenceService;
 
+    @Autowired
+    private PlatformTransactionManager transactionManager;
+
     private MockMvc mockMvc;
 
     @BeforeEach
     void prepareDatabase() {
         removeAuditFailureTrigger();
+        jdbcClient.sql("DELETE FROM messaging_outbox").update();
         jdbcClient.sql("DELETE FROM audit_event").update();
         jdbcClient.sql("DELETE FROM idempotency_record").update();
+        jdbcClient.sql("TRUNCATE TABLE marketplace_request_recipient, planning_published_request CASCADE").update();
         jdbcClient.sql("DELETE FROM planning_preference_ranked_item").update();
         jdbcClient.sql("DELETE FROM planning_preference_selected_window").update();
         jdbcClient.sql("DELETE FROM planning_plan_preference").update();
@@ -91,6 +102,10 @@ class PlanCancellationIT extends PostgreSqlIntegrationTest {
         jdbcClient.sql("DELETE FROM planning_candidate_window").update();
         jdbcClient.sql("DELETE FROM planning_requirement_draft").update();
         jdbcClient.sql("DELETE FROM planning_plan").update();
+        jdbcClient.sql("DELETE FROM provider_organization WHERE provider_id IN (:firstProviderId, :secondProviderId)")
+                .param("firstProviderId", FIRST_PROVIDER_ID)
+                .param("secondProviderId", SECOND_PROVIDER_ID)
+                .update();
         jdbcClient.sql("DELETE FROM group_membership").update();
         jdbcClient.sql("DELETE FROM group_account").update();
         jdbcClient.sql("DELETE FROM identity_account WHERE account_id IN (:organizerId, :memberId, :outsiderId)")
@@ -165,6 +180,65 @@ class PlanCancellationIT extends PostgreSqlIntegrationTest {
     }
 
     @Test
+    void organizerCancelsOpenRequestWithPointerEventsAuditAndReplayInOneTransaction() throws Exception {
+        insertOpenRequestWithRecipients();
+
+        var first = cancelAs(ORGANIZER_ID, "cancel-open", "\"2\"")
+                .andExpect(status().isOk())
+                .andExpect(header().string("ETag", "\"3\""))
+                .andExpect(jsonPath("$.planId").value(PLAN_ID.toString()))
+                .andExpect(jsonPath("$.state").value("CANCELLED"))
+                .andExpect(jsonPath("$.version").value(3))
+                .andReturn().getResponse();
+
+        assertThat(planState()).isEqualTo(PlanState.CANCELLED);
+        assertThat(planVersion()).isEqualTo(3);
+        assertThat(currentRequestId()).isNull();
+        assertThat(requestState()).isEqualTo("CANCELLED");
+        assertThat(requestHasTerminalTimestamp()).isTrue();
+        assertThat(recipientCount()).isEqualTo(2);
+        assertThat(cancelledBusinessKeys()).containsExactly(
+                "ProviderRequestCancelled:" + REQUEST_ID + ":" + FIRST_PROVIDER_ID,
+                "ProviderRequestCancelled:" + REQUEST_ID + ":" + SECOND_PROVIDER_ID);
+        assertSafeCancellationPayloads();
+        assertThat(count("SELECT count(*) FROM audit_event WHERE action = 'plan.cancelled' AND plan_id = :planId"))
+                .isOne();
+        assertThat(count("SELECT count(*) FROM idempotency_record WHERE operation = 'plans.cancel' AND state = 'COMPLETED'"))
+                .isOne();
+
+        var replay = cancelAs(ORGANIZER_ID, "cancel-open", "\"2\"")
+                .andExpect(status().isOk())
+                .andExpect(header().string("ETag", "\"3\""))
+                .andReturn().getResponse();
+        assertThat(replay.getContentAsString()).isEqualTo(first.getContentAsString());
+        assertThat(cancelledBusinessKeys()).hasSize(2);
+
+        getAs(MEMBER_ID, "/api/v1/plans/{planId}/published-requests/" + REQUEST_ID, PLAN_ID)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("CANCELLED"))
+                .andExpect(jsonPath("$.actionable").value(false));
+    }
+
+    @Test
+    void openRequestCancellationRollsBackPlanRequestEventsAuditAndReplayWhenAuditFails() throws Exception {
+        insertOpenRequestWithRecipients();
+        installAuditFailureTrigger();
+
+        cancelAs(ORGANIZER_ID, "cancel-open-rollback", "\"2\"")
+                .andExpect(status().isInternalServerError());
+
+        assertThat(planState()).isEqualTo(PlanState.OPEN_FOR_OFFERS);
+        assertThat(planVersion()).isEqualTo(2);
+        assertThat(currentRequestId()).isEqualTo(REQUEST_ID);
+        assertThat(requestState()).isEqualTo("OPEN");
+        assertThat(requestHasTerminalTimestamp()).isFalse();
+        assertThat(recipientCount()).isEqualTo(2);
+        assertThat(cancelledBusinessKeys()).isEmpty();
+        assertThat(count("SELECT count(*) FROM audit_event")).isZero();
+        assertThat(count("SELECT count(*) FROM idempotency_record")).isZero();
+    }
+
+    @Test
     void rejectsRolePrivacyAndEveryPlanPreconditionBeforeChangingState() throws Exception {
         cancelAs(MEMBER_ID, "member-cancel", "\"1\"")
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("FORBIDDEN_ROLE"));
@@ -220,18 +294,7 @@ class PlanCancellationIT extends PostgreSqlIntegrationTest {
 
     @Test
     void rollsBackThePlanTransitionAndIdempotencyCompletionWhenAuditAppendFails() throws Exception {
-        jdbcClient.sql("""
-                        CREATE FUNCTION test_fail_plan_cancelled_audit()
-                        RETURNS trigger LANGUAGE plpgsql AS $$
-                        BEGIN RAISE EXCEPTION 'forced cancellation audit failure'; END;
-                        $$
-                        """).update();
-        jdbcClient.sql("""
-                        CREATE TRIGGER fail_plan_cancelled_audit
-                        BEFORE INSERT ON audit_event FOR EACH ROW
-                        WHEN (NEW.action = 'plan.cancelled')
-                        EXECUTE FUNCTION test_fail_plan_cancelled_audit()
-                        """).update();
+        installAuditFailureTrigger();
 
         cancelAs(ORGANIZER_ID, "cancel-rollback", "\"1\"")
                 .andExpect(status().isInternalServerError());
@@ -424,7 +487,79 @@ class PlanCancellationIT extends PostgreSqlIntegrationTest {
                         INSERT INTO planning_plan_preference (
                             plan_id, account_id, basis_plan_version, attendance, guest_count, version
                         ) VALUES (:planId, :accountId, 1, 'JOINING', 0, 1)
-                        """).param("planId", PLAN_ID).param("accountId", MEMBER_ID).update();
+                """).param("planId", PLAN_ID).param("accountId", MEMBER_ID).update();
+    }
+
+    private void insertOpenRequestWithRecipients() {
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            jdbcClient.sql("""
+                        INSERT INTO planning_published_request (
+                            request_id, plan_id, request_version, state, distribution_mode,
+                            category, time_zone, area_code, radius_km, requested_starts_at,
+                            requested_ends_at, minimum_headcount, maximum_headcount,
+                            budget_currency, budget_minimum_minor_units, budget_maximum_minor_units,
+                            must_haves, provider_safe_notes, category_attributes, offer_deadline,
+                            published_by_account_id, published_at
+                        ) VALUES (
+                            :requestId, :planId, 1, 'OPEN', 'MATCHED_POOL',
+                            'COURT', 'Asia/Manila', 'BGC', 5,
+                            statement_timestamp() + interval '2 days',
+                            statement_timestamp() + interval '2 days 2 hours',
+                            4, 10, 'PHP', 100000, 250000,
+                            ARRAY['parking']::varchar[], 'Indoor court preferred.',
+                            '{"courtCount":2}'::jsonb,
+                            statement_timestamp() + interval '1 day',
+                            :organizerId, statement_timestamp()
+                        )
+                        """)
+                .param("requestId", REQUEST_ID)
+                .param("planId", PLAN_ID)
+                .param("organizerId", ORGANIZER_ID)
+                .update();
+            jdbcClient.sql("""
+                        UPDATE planning_plan
+                        SET state = 'OPEN_FOR_OFFERS', current_request_id = :requestId, version = 2
+                        WHERE plan_id = :planId
+                        """)
+                .param("requestId", REQUEST_ID)
+                .param("planId", PLAN_ID)
+                .update();
+        });
+        for (var providerId : List.of(FIRST_PROVIDER_ID, SECOND_PROVIDER_ID)) {
+            jdbcClient.sql("""
+                            INSERT INTO provider_organization (
+                                provider_id, display_name, status, verification_status,
+                                version, eligibility_version
+                            ) VALUES (:providerId, :displayName, 'ACTIVE', 'VERIFIED', 1, 1)
+                            """)
+                    .param("providerId", providerId)
+                    .param("displayName", "Cancellation provider " + providerId)
+                    .update();
+            jdbcClient.sql("""
+                            INSERT INTO marketplace_request_recipient (
+                                published_request_id, provider_id, provider_eligibility_version,
+                                source, access_state, created_at
+                            ) VALUES (:requestId, :providerId, 1, 'MATCH_RULE', 'ACTIVE', statement_timestamp())
+                            """)
+                    .param("requestId", REQUEST_ID)
+                    .param("providerId", providerId)
+                    .update();
+        }
+    }
+
+    private void installAuditFailureTrigger() {
+        jdbcClient.sql("""
+                        CREATE FUNCTION test_fail_plan_cancelled_audit()
+                        RETURNS trigger LANGUAGE plpgsql AS $$
+                        BEGIN RAISE EXCEPTION 'forced cancellation audit failure'; END;
+                        $$
+                        """).update();
+        jdbcClient.sql("""
+                        CREATE TRIGGER fail_plan_cancelled_audit
+                        BEFORE INSERT ON audit_event FOR EACH ROW
+                        WHEN (NEW.action = 'plan.cancelled')
+                        EXECUTE FUNCTION test_fail_plan_cancelled_audit()
+                        """).update();
     }
 
     private CreatePreferenceRequest preferenceRequest(String note) {
@@ -440,6 +575,54 @@ class PlanCancellationIT extends PostgreSqlIntegrationTest {
     private long planVersion() {
         return jdbcClient.sql("SELECT version FROM planning_plan WHERE plan_id = :planId")
                 .param("planId", PLAN_ID).query(Long.class).single();
+    }
+
+    private UUID currentRequestId() {
+        return jdbcClient.sql("SELECT current_request_id FROM planning_plan WHERE plan_id = :planId")
+                .param("planId", PLAN_ID).query(UUID.class).optional().orElse(null);
+    }
+
+    private String requestState() {
+        return jdbcClient.sql("SELECT state FROM planning_published_request WHERE request_id = :requestId")
+                .param("requestId", REQUEST_ID).query(String.class).single();
+    }
+
+    private boolean requestHasTerminalTimestamp() {
+        return jdbcClient.sql("SELECT closed_at IS NOT NULL FROM planning_published_request WHERE request_id = :requestId")
+                .param("requestId", REQUEST_ID).query(Boolean.class).single();
+    }
+
+    private long recipientCount() {
+        return jdbcClient.sql("SELECT count(*) FROM marketplace_request_recipient WHERE published_request_id = :requestId")
+                .param("requestId", REQUEST_ID).query(Long.class).single();
+    }
+
+    private List<String> cancelledBusinessKeys() {
+        return jdbcClient.sql("""
+                        SELECT business_key
+                        FROM messaging_outbox
+                        WHERE aggregate_id = :requestId AND event_type = 'ProviderRequestCancelled'
+                        ORDER BY business_key
+                        """)
+                .param("requestId", REQUEST_ID)
+                .query(String.class)
+                .list();
+    }
+
+    private void assertSafeCancellationPayloads() {
+        var payloads = jdbcClient.sql("""
+                        SELECT payload::text
+                        FROM messaging_outbox
+                        WHERE aggregate_id = :requestId AND event_type = 'ProviderRequestCancelled'
+                        """)
+                .param("requestId", REQUEST_ID)
+                .query(String.class)
+                .list();
+        assertThat(payloads).hasSize(2).allSatisfy(payload -> {
+            assertThat(payload).contains("requestId", "providerId");
+            assertThat(payload.toLowerCase()).doesNotContain(
+                    "group", "member", "employer", "note", "contact", "title", "preference", "attendance");
+        });
     }
 
     private String planTitle() {

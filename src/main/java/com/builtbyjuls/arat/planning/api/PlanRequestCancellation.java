@@ -1,6 +1,9 @@
 package com.builtbyjuls.arat.planning.api;
 
+import java.time.OffsetDateTime;
+
 public record PlanRequestCancellation(
-        long planVersion,
-        ProviderSafeRequestSnapshot cancelledRequest) {
+        PlanRepresentation plan,
+        ProviderSafeRequestSnapshot cancelledRequest,
+        OffsetDateTime cancelledAt) {
 }

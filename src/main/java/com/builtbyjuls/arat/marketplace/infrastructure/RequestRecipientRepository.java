@@ -60,6 +60,19 @@ public class RequestRecipientRepository {
     }
 
     @Transactional(readOnly = true)
+    public List<UUID> findProviderIdsByRequestId(UUID publishedRequestId) {
+        return jdbcClient.sql("""
+                        SELECT provider_id
+                        FROM marketplace_request_recipient
+                        WHERE published_request_id = :publishedRequestId
+                        ORDER BY provider_id
+                        """)
+                .param("publishedRequestId", publishedRequestId)
+                .query(UUID.class)
+                .list();
+    }
+
+    @Transactional(readOnly = true)
     public List<RequestRecipient> findActiveByProviderId(UUID providerId) {
         return jdbcClient.sql(selectRecipients() + """
                         WHERE provider_id = :providerId
