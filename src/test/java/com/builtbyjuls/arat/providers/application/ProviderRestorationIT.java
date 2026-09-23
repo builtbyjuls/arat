@@ -344,7 +344,8 @@ class ProviderRestorationIT extends PostgreSqlIntegrationTest {
 
     private void truncateProviderTables() {
         jdbcClient.sql("""
-                TRUNCATE TABLE provider_suspension,
+                TRUNCATE TABLE marketplace_request_recipient,
+                    provider_suspension,
                     provider_verification_decision,
                     provider_verification_evidence_reference,
                     provider_verification_submission,
