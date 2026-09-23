@@ -13,8 +13,8 @@ The domain model makes four facts explicit:
 The model favors visible domain constraints over generic abstractions. The
 names below are target design terms and do not imply that implementation is
 already complete. M2 provider profiles, verification submissions, operator
-decisions, suspension, and restoration are implemented; finalizations,
-requests, recipients, and outbox capture are planned next. Offers, votes,
+decisions, suspension, restoration, and requirement finalization are
+implemented; requests, recipients, and outbox capture are planned next. Offers, votes,
 selection, confirmation, and matches
 begin in M3;
 relay and delivery begin in M4.
@@ -518,14 +518,14 @@ candidate windows are retired rather than deleted, preserving explainable
 preference references. Integer minor units are persistence-only; public money
 uses exact two-decimal PHP strings.
 
-### `requirement_finalization` (M2, planned)
+### `requirement_finalization` (M2, implemented)
 
 Planning stores an immutable finalization ID, plan ID, basis plan version,
 chosen active candidate-window ID and copied start/end values, offer deadline,
 and the provider-publishable fields listed below. It captures bounded aggregate
 counts of current and stale submitted preferences and warnings without changing
-organizer terms. Finalization is allowed in `COLLABORATING` and
-`OPEN_FOR_OFFERS`, locks group then plan for organizer authority and `If-Match`,
+organizer terms. This implementation finalizes in `COLLABORATING`; support while
+requests are open is planned. It locks group then plan for organizer authority and `If-Match`,
 and does not change plan state or increment plan version. PostgreSQL decision
 time requires `now < offer_deadline < chosen_start`.
 

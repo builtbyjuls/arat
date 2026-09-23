@@ -87,6 +87,13 @@ public class RequirementFinalizationRepository {
                 .optional();
     }
 
+    @Transactional(propagation = Propagation.MANDATORY)
+    public OffsetDateTime databaseDecisionTime() {
+        return jdbcClient.sql("SELECT clock_timestamp()")
+                .query(OffsetDateTime.class)
+                .single();
+    }
+
     private String selectFinalization() {
         return """
                 SELECT finalization_id, plan_id, basis_plan_version, selected_candidate_window_id,

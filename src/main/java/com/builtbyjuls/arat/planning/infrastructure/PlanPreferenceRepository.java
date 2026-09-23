@@ -16,6 +16,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Repository
 public class PlanPreferenceRepository {
 
+    public record PreferenceCounts(int current, int stale) {
+    }
+
     private final JdbcClient jdbcClient;
 
     public PlanPreferenceRepository(JdbcClient jdbcClient) {
@@ -122,6 +125,21 @@ public class PlanPreferenceRepository {
                 .param("planId", planId)
                 .query(this::mapPreference)
                 .list();
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public PreferenceCounts countByPlanAndBasisVersion(UUID planId, long basisPlanVersion) {
+        return jdbcClient.sql("""
+                        SELECT count(*) FILTER (WHERE basis_plan_version = :basisPlanVersion) AS current_count,
+                               count(*) FILTER (WHERE basis_plan_version <> :basisPlanVersion) AS stale_count
+                        FROM planning_plan_preference
+                        WHERE plan_id = :planId
+                        """)
+                .param("planId", planId)
+                .param("basisPlanVersion", basisPlanVersion)
+                .query((resultSet, rowNum) -> new PreferenceCounts(
+                        resultSet.getInt("current_count"), resultSet.getInt("stale_count")))
+                .single();
     }
 
     private JdbcClient.MappedQuerySpec<PlanPreference> query(UUID planId, UUID accountId) {

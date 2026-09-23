@@ -535,9 +535,10 @@ If-Match: "plan-version"
 The organizer chooses one active candidate window. Under the plan lock,
 finalization copies its values and all provider-publishable requirement fields
 into an immutable resource with the current plan version as its basis.
-It is allowed in `COLLABORATING` and `OPEN_FOR_OFFERS`, does not publish or
-change plan state, and does not increment plan version. PostgreSQL decision
+This implementation allows `COLLABORATING`; support while requests are open is
+planned. It does not publish or change plan state, and does not increment plan version. PostgreSQL decision
 time requires a future offer deadline strictly before the selected start.
+Deadline instants must use PostgreSQL's microsecond precision.
 
 The response identifies the finalization and basis plan version, copied terms,
 and bounded aggregate counts of current and stale submitted preferences, with
@@ -660,7 +661,8 @@ worker; delayed cleanup cannot make an expired request actionable.
 ### M2 command outcomes and stable problems
 
 Provider creation, reads, profile replacement, verification submission and
-decision, suspension, and restoration are implemented. Remaining entries are planned.
+decision, suspension, restoration, and requirement finalization are implemented.
+Remaining entries are planned.
 Common malformed syntax and authentication outcomes
 remain 400 and 401. Required missing, malformed, and stale version preconditions
 return 428 `PRECONDITION_REQUIRED`, 400 `INVALID_PRECONDITION`, and 412
