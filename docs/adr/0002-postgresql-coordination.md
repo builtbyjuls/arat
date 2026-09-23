@@ -102,7 +102,7 @@ Arat? will use:
 
 Redis locks, Java locks, and queue ordering will not be required for domain correctness. Release 1 uses SQS only for notifications after a transaction commits. Provider matching remains database-backed application work.
 
-### M2 publication coordination (planned)
+### M2 publication coordination (implemented)
 
 M2 adds provider eligibility, finalization, request publication/access, and
 transactional outbox capture. Relay and queue delivery begin in M4. M2 commands

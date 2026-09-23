@@ -69,7 +69,7 @@ Costs:
 
 Arat? will use immutable, versioned published requests and explicit provider confirmation.
 
-### Published requests (M2, planned)
+### Published requests (M2, implemented)
 
 - Planning finalizes one active window, deadline, and provider-publishable terms
   from the locked plan version. This immutable resource does not change plan
