@@ -4,6 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.builtbyjuls.arat.PostgreSqlIntegrationTest;
+import com.builtbyjuls.arat.planning.application.PlanPreferenceService;
+import com.builtbyjuls.arat.planning.application.PlanQueryService;
+import com.builtbyjuls.arat.planning.application.RequirementFinalizationService;
+import com.builtbyjuls.arat.planning.application.RequirementReplacementService;
+import com.builtbyjuls.arat.planning.domain.Attendance;
 import com.builtbyjuls.arat.planning.domain.ActivityCategory;
 import com.builtbyjuls.arat.planning.domain.CandidateWindow;
 import com.builtbyjuls.arat.planning.domain.Plan;
@@ -14,9 +19,13 @@ import com.builtbyjuls.arat.planning.domain.RequirementFinalization;
 import com.builtbyjuls.arat.planning.infrastructure.PlanRepository;
 import com.builtbyjuls.arat.planning.infrastructure.PublishedRequestRepository;
 import com.builtbyjuls.arat.planning.infrastructure.RequirementFinalizationRepository;
+import com.builtbyjuls.arat.testing.ConcurrentDatabaseWorkers;
+import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,6 +43,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 class PlanningRequestAccessIT extends PostgreSqlIntegrationTest {
 
     private static final UUID OWNER_ID = UUID.fromString("30000000-0000-4000-8000-000000000032");
+    private static final UUID MEMBER_ID = UUID.fromString("30000000-0000-4000-8000-000000000033");
     private static final UUID GROUP_ID = UUID.fromString("40000000-0000-4000-8000-000000000032");
 
     @Autowired
@@ -49,7 +59,22 @@ class PlanningRequestAccessIT extends PostgreSqlIntegrationTest {
     private RequirementFinalizationRepository finalizationRepository;
 
     @Autowired
+    private RequirementReplacementService requirementReplacementService;
+
+    @Autowired
+    private PlanPreferenceService preferenceService;
+
+    @Autowired
+    private RequirementFinalizationService finalizationService;
+
+    @Autowired
+    private PlanQueryService planQueryService;
+
+    @Autowired
     private JdbcClient jdbcClient;
+
+    @Autowired
+    private DataSource dataSource;
 
     @Autowired
     private PlatformTransactionManager transactionManager;
@@ -61,10 +86,11 @@ class PlanningRequestAccessIT extends PostgreSqlIntegrationTest {
         transactionTemplate = new TransactionTemplate(transactionManager);
         jdbcClient.sql("""
                         INSERT INTO identity_account (account_id, display_name)
-                        VALUES (:ownerId, 'Planning boundary owner')
+                        VALUES (:ownerId, 'Planning boundary owner'), (:memberId, 'Planning boundary member')
                         ON CONFLICT (account_id) DO NOTHING
                         """)
                 .param("ownerId", OWNER_ID)
+                .param("memberId", MEMBER_ID)
                 .update();
         jdbcClient.sql("""
                         INSERT INTO group_account (group_id, name, description, status, created_by_account_id)
@@ -73,6 +99,16 @@ class PlanningRequestAccessIT extends PostgreSqlIntegrationTest {
                         """)
                 .param("groupId", GROUP_ID)
                 .param("ownerId", OWNER_ID)
+                .update();
+        jdbcClient.sql("""
+                        INSERT INTO group_membership (group_id, account_id, role, status, joined_at)
+                        VALUES (:groupId, :ownerId, 'ORGANIZER', 'ACTIVE', statement_timestamp()),
+                               (:groupId, :memberId, 'MEMBER', 'ACTIVE', statement_timestamp())
+                        ON CONFLICT (group_id, account_id) DO NOTHING
+                        """)
+                .param("groupId", GROUP_ID)
+                .param("ownerId", OWNER_ID)
+                .param("memberId", MEMBER_ID)
                 .update();
     }
 
@@ -264,6 +300,122 @@ class PlanningRequestAccessIT extends PostgreSqlIntegrationTest {
         assertThat(snapshot.mustHaves()).containsExactly("Parking", "Shower");
         assertThat(snapshot.providerSafeNotes()).isEqualTo("Indoor court preferred.");
         assertThat(snapshot.actionable()).isTrue();
+    }
+
+    @Test
+    void keepsOpenRequestSnapshotSeparateFromRepeatedDraftPreferenceAndFinalizationChanges() {
+        var fixture = createFixture();
+        var requestId = UUID.randomUUID();
+        inTransaction(() -> access.create(publishCommand(fixture, requestId, fixture.finalizationId(), 1)));
+        var originalRequestBytes = requestSnapshot(requestId).getBytes(StandardCharsets.UTF_8);
+
+        var firstDraftStart = fixture.startsAt().plusHours(1);
+        requirementReplacementService.replace(replacement(fixture, 2, "Open draft one", firstDraftStart));
+        preferenceService.create(new CreatePreferenceCommand(
+                MEMBER_ID, fixture.planId(), preferenceRequest(3, fixture.candidateWindowId(), "draft one")));
+        var replacedPreference = preferenceService.replace(new ReplacePreferenceCommand(
+                MEMBER_ID, fixture.planId(), 1, preferenceRequest(3, fixture.candidateWindowId(), "draft one replacement")));
+        assertThat(replacedPreference.basisPlanVersion()).isEqualTo(3);
+        assertThat(replacedPreference.version()).isEqualTo(2);
+
+        var secondDraftStart = fixture.startsAt().plusHours(2);
+        requirementReplacementService.replace(replacement(fixture, 3, "Open draft two", secondDraftStart));
+
+        var detail = planQueryService.findPrivate(fixture.planId(), MEMBER_ID);
+        assertThat(detail.title()).isEqualTo("Open draft two");
+        assertThat(detail.requirements().candidateWindows()).singleElement().satisfies(window -> {
+            assertThat(window.id()).isEqualTo(fixture.candidateWindowId());
+            assertThat(window.startAt()).isEqualTo(secondDraftStart);
+        });
+        assertThat(preferenceService.findAll(fixture.planId(), MEMBER_ID).items()).singleElement()
+                .satisfies(preference -> assertThat(preference.current()).isFalse());
+
+        var finalization = finalizationService.finalizeRequirements(new FinalizeRequirementsCommand(
+                OWNER_ID, fixture.planId(), 4,
+                new FinalizeRequirementsRequest(fixture.candidateWindowId(), secondDraftStart.minusHours(1)),
+                "open-draft-finalization", "open-draft"));
+
+        assertThat(finalization.basisPlanVersion()).isEqualTo(4);
+        assertThat(finalization.selectedStartAt()).isEqualTo(secondDraftStart);
+        assertPlan(fixture.planId(), PlanState.OPEN_FOR_OFFERS, requestId, 4);
+        assertThat(requestSnapshot(requestId).getBytes(StandardCharsets.UTF_8)).containsExactly(originalRequestBytes);
+    }
+
+    @Test
+    void rejectsAnOpenStatePreferenceWriterWhoseBasisLosesTheDraftRace() throws Exception {
+        var fixture = createFixture();
+        var requestId = UUID.randomUUID();
+        inTransaction(() -> access.create(publishCommand(fixture, requestId, fixture.finalizationId(), 1)));
+        var originalRequestBytes = requestSnapshot(requestId).getBytes(StandardCharsets.UTF_8);
+
+        var outcomes = ConcurrentDatabaseWorkers.runOrdered(
+                dataSource, transactionManager,
+                "SELECT plan_id FROM planning_plan WHERE plan_id = ? FOR UPDATE", fixture.planId(),
+                () -> requirementReplacementService.replace(
+                        replacement(fixture, 2, "Open draft winner", fixture.startsAt().plusHours(1))),
+                () -> preferenceService.create(new CreatePreferenceCommand(
+                        MEMBER_ID, fixture.planId(), preferenceRequest(2, fixture.candidateWindowId(), "stale writer"))));
+
+        assertThat(outcomes.getFirst().succeeded()).isTrue();
+        assertThat(outcomes.getLast().failure()).isInstanceOf(PreferenceException.class)
+                .extracting(failure -> ((PreferenceException) failure).reason())
+                .isEqualTo(PreferenceException.Reason.REQUIREMENT_VERSION_CHANGED);
+        assertPlan(fixture.planId(), PlanState.OPEN_FOR_OFFERS, requestId, 3);
+        assertThat(requestSnapshot(requestId).getBytes(StandardCharsets.UTF_8)).containsExactly(originalRequestBytes);
+    }
+
+    @Test
+    void allowsOneOpenStatePreferenceReplacementAndRejectsItsStaleEtagRacer() throws Exception {
+        var fixture = createFixture();
+        var requestId = UUID.randomUUID();
+        inTransaction(() -> access.create(publishCommand(fixture, requestId, fixture.finalizationId(), 1)));
+        preferenceService.create(new CreatePreferenceCommand(
+                MEMBER_ID, fixture.planId(), preferenceRequest(2, fixture.candidateWindowId(), "initial preference")));
+        var originalRequestBytes = requestSnapshot(requestId).getBytes(StandardCharsets.UTF_8);
+
+        var outcomes = ConcurrentDatabaseWorkers.runOrdered(
+                dataSource, transactionManager,
+                "SELECT plan_id FROM planning_plan WHERE plan_id = ? FOR UPDATE", fixture.planId(),
+                () -> preferenceService.replace(new ReplacePreferenceCommand(
+                        MEMBER_ID, fixture.planId(), 1,
+                        preferenceRequest(2, fixture.candidateWindowId(), "replacement winner"))),
+                () -> preferenceService.replace(new ReplacePreferenceCommand(
+                        MEMBER_ID, fixture.planId(), 1,
+                        preferenceRequest(2, fixture.candidateWindowId(), "replacement loser"))));
+
+        assertThat(outcomes.getFirst().value().basisPlanVersion()).isEqualTo(2);
+        assertThat(outcomes.getFirst().value().version()).isEqualTo(2);
+        assertThat(outcomes.getLast().failure()).isInstanceOf(PreferenceException.class)
+                .extracting(failure -> ((PreferenceException) failure).reason())
+                .isEqualTo(PreferenceException.Reason.PRECONDITION_FAILED);
+        assertPlan(fixture.planId(), PlanState.OPEN_FOR_OFFERS, requestId, 2);
+        assertThat(requestSnapshot(requestId).getBytes(StandardCharsets.UTF_8)).containsExactly(originalRequestBytes);
+    }
+
+    private ReplaceRequirementsCommand replacement(
+            Fixture fixture, long expectedPlanVersion, String title, OffsetDateTime startsAt) {
+        return new ReplaceRequirementsCommand(
+                OWNER_ID, fixture.planId(), expectedPlanVersion,
+                new RequirementReplacementRequest(
+                        title, ActivityCategory.COURT, "Asia/Manila",
+                        List.of(new RequirementReplacementRequest.CandidateWindowRequest(
+                                fixture.candidateWindowId(), startsAt, startsAt.plusHours(2))),
+                        new CreatePlanRequest.AreaRequest("BGC", 5),
+                        new CreatePlanRequest.HeadcountRequest(4, 10),
+                        null, List.of("parking"), title + " notes", Map.of()),
+                "open-draft");
+    }
+
+    private CreatePreferenceRequest preferenceRequest(long basisPlanVersion, UUID windowId, String note) {
+        return new CreatePreferenceRequest(
+                basisPlanVersion, Attendance.JOINING, 0, List.of(windowId), null, List.of(note), note);
+    }
+
+    private String requestSnapshot(UUID requestId) {
+        return jdbcClient.sql("SELECT row_to_json(request_row)::text FROM planning_published_request request_row WHERE request_id = :requestId")
+                .param("requestId", requestId)
+                .query(String.class)
+                .single();
     }
 
     private Fixture createFixture() {

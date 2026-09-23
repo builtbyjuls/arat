@@ -535,8 +535,8 @@ If-Match: "plan-version"
 The organizer chooses one active candidate window. Under the plan lock,
 finalization copies its values and all provider-publishable requirement fields
 into an immutable resource with the current plan version as its basis.
-This implementation allows `COLLABORATING`; support while requests are open is
-planned. It does not publish or change plan state, and does not increment plan version. PostgreSQL decision
+This implementation allows `COLLABORATING` and `OPEN_FOR_OFFERS`. It does not
+publish or change plan state, and does not increment plan version. PostgreSQL decision
 time requires a future offer deadline strictly before the selected start.
 Deadline instants must use PostgreSQL's microsecond precision.
 

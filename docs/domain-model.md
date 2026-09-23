@@ -524,8 +524,8 @@ Planning stores an immutable finalization ID, plan ID, basis plan version,
 chosen active candidate-window ID and copied start/end values, offer deadline,
 and the provider-publishable fields listed below. It captures bounded aggregate
 counts of current and stale submitted preferences and warnings without changing
-organizer terms. This implementation finalizes in `COLLABORATING`; support while
-requests are open is planned. It locks group then plan for organizer authority and `If-Match`,
+organizer terms. This implementation finalizes in `COLLABORATING` and
+`OPEN_FOR_OFFERS`. It locks group then plan for organizer authority and `If-Match`,
 and does not change plan state or increment plan version. PostgreSQL decision
 time requires `now < offer_deadline < chosen_start`.
 

@@ -55,7 +55,7 @@ public class RequirementReplacementService {
         if (plan.version() != command.expectedPlanVersion()) {
             throw failure(RequirementReplacementException.Reason.PRECONDITION_FAILED);
         }
-        if (plan.state() != PlanState.COLLABORATING) {
+        if (plan.state() != PlanState.COLLABORATING && plan.state() != PlanState.OPEN_FOR_OFFERS) {
             throw failure(RequirementReplacementException.Reason.INVALID_PLAN_STATE);
         }
 

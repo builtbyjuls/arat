@@ -40,7 +40,7 @@ public class PlanPreferenceService {
                 .orElseThrow(() -> failure(PreferenceException.Reason.PRIVATE_RESOURCE_NOT_FOUND));
         requireActiveMembership(groupId, command.actorId());
         var plan = planRepository.lockPlan(command.planId());
-        if (plan.state() != PlanState.COLLABORATING) {
+        if (plan.state() != PlanState.COLLABORATING && plan.state() != PlanState.OPEN_FOR_OFFERS) {
             throw failure(PreferenceException.Reason.INVALID_PLAN_STATE);
         }
         if (plan.version() != command.request().basisPlanVersion()) {
@@ -72,7 +72,7 @@ public class PlanPreferenceService {
         var plan = planRepository.lockPlan(command.planId());
         var existing = preferenceRepository.lock(command.planId(), command.actorId())
                 .orElseThrow(() -> failure(PreferenceException.Reason.PREFERENCE_NOT_FOUND));
-        if (plan.state() != PlanState.COLLABORATING) {
+        if (plan.state() != PlanState.COLLABORATING && plan.state() != PlanState.OPEN_FOR_OFFERS) {
             throw failure(PreferenceException.Reason.INVALID_PLAN_STATE);
         }
         if (existing.version() != command.expectedPreferenceVersion()) {

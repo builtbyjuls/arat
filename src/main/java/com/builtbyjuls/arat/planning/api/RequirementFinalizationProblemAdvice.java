@@ -31,7 +31,7 @@ class RequirementFinalizationProblemAdvice {
             case PRIVATE_RESOURCE_NOT_FOUND -> write(request, response, HttpStatus.NOT_FOUND, "PRIVATE_RESOURCE_NOT_FOUND", "Private resource not found", "The requested private resource was not found.");
             case FORBIDDEN_ROLE -> write(request, response, HttpStatus.FORBIDDEN, "FORBIDDEN_ROLE", "Forbidden role", "An organizer role is required.");
             case PRECONDITION_FAILED -> write(request, response, HttpStatus.PRECONDITION_FAILED, "PRECONDITION_FAILED", "Precondition failed", "The plan version no longer matches If-Match.");
-            case INVALID_PLAN_STATE -> write(request, response, HttpStatus.CONFLICT, "INVALID_PLAN_STATE", "Invalid plan state", "Requirements can be finalized only while collaborating.");
+            case INVALID_PLAN_STATE -> write(request, response, HttpStatus.CONFLICT, "INVALID_PLAN_STATE", "Invalid plan state", "Requirements can be finalized only while collaborating or open for offers.");
             case VALIDATION_FAILED -> write(request, response, HttpStatus.UNPROCESSABLE_ENTITY, "VALIDATION_FAILED", "Validation failed", "One or more fields are invalid.");
         }
     }

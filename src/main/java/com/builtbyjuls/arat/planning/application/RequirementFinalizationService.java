@@ -88,7 +88,7 @@ public class RequirementFinalizationService {
         if (plan.version() != command.expectedPlanVersion()) {
             throw failure(RequirementFinalizationException.Reason.PRECONDITION_FAILED);
         }
-        if (plan.state() != PlanState.COLLABORATING) {
+        if (plan.state() != PlanState.COLLABORATING && plan.state() != PlanState.OPEN_FOR_OFFERS) {
             throw failure(RequirementFinalizationException.Reason.INVALID_PLAN_STATE);
         }
 

@@ -204,8 +204,8 @@ and published directly as N+1 while N remains current until commit.
 ### 4.4 Finalize and publish a request version (M2)
 
 Finalization claims the required idempotency key, locks group then plan,
-verifies organizer authority, plan `If-Match`, and `COLLABORATING` (support while
-requests are open is planned), and copies one active candidate window and provider-publishable
+verifies organizer authority, plan `If-Match`, and `COLLABORATING` or
+`OPEN_FOR_OFFERS`, and copies one active candidate window and provider-publishable
 terms into an immutable finalization. The chosen offer deadline must satisfy
 `decision_time < offer_deadline < chosen_start`. Planning owns this operation;
 it neither changes plan state nor increments its version. Advisory current/stale

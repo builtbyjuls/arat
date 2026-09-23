@@ -47,7 +47,7 @@ class RequirementReplacementProblemAdvice {
             case PRECONDITION_FAILED -> write(request, response, HttpStatus.PRECONDITION_FAILED,
                     "PRECONDITION_FAILED", "Precondition failed", "The plan version no longer matches If-Match.");
             case INVALID_PLAN_STATE -> write(request, response, HttpStatus.CONFLICT,
-                    "INVALID_PLAN_STATE", "Invalid plan state", "Requirements can be replaced only while collaborating.");
+                    "INVALID_PLAN_STATE", "Invalid plan state", "Requirements can be replaced only while collaborating or open for offers.");
             case VALIDATION_FAILED -> write(request, response, HttpStatus.UNPROCESSABLE_ENTITY,
                     "VALIDATION_FAILED", "Validation failed", "One or more fields are invalid.");
         }

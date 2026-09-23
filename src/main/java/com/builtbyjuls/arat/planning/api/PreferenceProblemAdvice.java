@@ -43,7 +43,7 @@ class PreferenceProblemAdvice {
             case REQUIREMENT_VERSION_CHANGED -> write(request, response, HttpStatus.CONFLICT,
                     "REQUIREMENT_VERSION_CHANGED", "Requirement version changed", "The supplied basisPlanVersion no longer matches the plan.");
             case INVALID_PLAN_STATE -> write(request, response, HttpStatus.CONFLICT,
-                    "INVALID_PLAN_STATE", "Invalid plan state", "Preferences can be changed only while collaborating.");
+                    "INVALID_PLAN_STATE", "Invalid plan state", "Preferences can be changed only while collaborating or open for offers.");
             case VALIDATION_FAILED -> write(request, response, HttpStatus.UNPROCESSABLE_ENTITY,
                     "VALIDATION_FAILED", "Validation failed", "One or more fields are invalid.");
         }
