@@ -8,9 +8,10 @@ remain target design.
 This document defines the correctness contract for Arat?. M1 group and planning
 races have executable PostgreSQL evidence in
 `CollaborationRaceOutcomesIT`, and the M1 HTTP journey and OpenAPI contract have
-executable evidence in `MilestoneOneJourneyIT`. Marketplace, messaging,
-billing, and load claims remain design targets until their implementation and
-tests exist.
+executable evidence in `MilestoneOneJourneyIT`. M2 marketplace publication,
+recipient privacy, eligibility fencing, and outbox capture have focused
+PostgreSQL suites plus the complete `MilestoneTwoJourneyIT`. M3 marketplace,
+M4 delivery, billing, and load claims remain design targets.
 
 ## 1. Consistency model
 
@@ -197,7 +198,7 @@ Within one transaction, lock the group root, verify organizer authority, lock
 the plan, compare its `If-Match`, reject a cancelled plan, validate the full
 replacement, retain known candidate-window IDs, retire omitted IDs, and advance
 the plan version once. The transaction does not finalize or publish a provider
-request; those are planned M2 operations. M2 allows requirement and preference
+request; those are separate implemented M2 operations. M2 allows requirement and preference
 writes in `COLLABORATING` and `OPEN_FOR_OFFERS`. They affect private state only;
 they never mutate or close current request N. A changed draft can be finalized
 and published directly as N+1 while N remains current until commit.
@@ -575,7 +576,7 @@ or special-casing arbitrary attributes in the generic component.
 
 ## 9. Outbox and consumer idempotency
 
-The planned M2 outbox captures durable notification intent only. Messaging
+The implemented M2 outbox captures durable notification intent only. Messaging
 owns immutable versioned envelopes and an append API that must join the caller
 transaction; it cannot independently commit. No relay, AWS SDK, SQS, Floci,
 inbox, SMTP, email rendering, delivery retry, or DLQ exists in M2. M3 appends
@@ -650,9 +651,10 @@ Concurrency claims require deterministic PostgreSQL integration tests with Testc
 
 ### 11.1 Required tests
 
-M2's planned tests cover publication/finalization, provider identity and
-eligibility, recipient reads, and outbox capture. The complete M2 gates are in
-the [testing strategy](testing-strategy.md#milestone-2-contract-and-failure-matrix-planned).
+M2's implemented tests cover publication/finalization, provider identity and
+eligibility, recipient reads, outbox capture, and the complete HTTP journey.
+The complete M2 gates are in the
+[testing strategy](testing-strategy.md#milestone-2-contract-and-failure-matrix-implemented).
 They include actual PostgreSQL root/FK lock compatibility and same-key replay
 of maximum multibyte snapshots with sensitive-looking valid attribute keys.
 The offer/match tests below begin in M3 and queue tests in M4.
@@ -735,6 +737,7 @@ Before presenting the project as concurrency-safe, the repository must contain:
 - A reproducible load-test scenario and raw output
 - An explanation of any observed deadlocks, retries, or bottlenecks
 
-The M1 collaboration artifacts named above provide executable evidence for that
-scope. The marketplace, messaging, billing, and load artifacts remain required
-before those later claims become proof rather than design targets.
+The M1 collaboration and M2 provider-request artifacts named above provide
+executable evidence for those scopes. M3 marketplace behavior, M4 delivery,
+billing, and load artifacts remain required before those later claims become
+proof rather than design targets.

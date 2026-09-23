@@ -4,13 +4,13 @@ Status: Target design
 
 This document describes the intended architecture. It is not evidence that every component has been implemented or load tested. Test and performance results must be added only after they are reproduced.
 
-M2 is next and remains planned: provider identity/eligibility, immutable
-finalization and request publication, fixed recipients, authorized reads, and
-PostgreSQL outbox capture only. M3 adds offers, votes, selection, confirmation,
-and matches. M4 adds relay, AWS SDK/SQS/Floci, inbox, SMTP, email rendering,
-delivery retries, and DLQ behavior. Listings, direct invitations, billing,
-advanced trust tooling, geospatial search, and cloud deployment are deferred.
-The diagrams below show target architecture, not implemented M2 delivery.
+M2 is implemented: provider identity and eligibility, immutable finalization
+and request publication, fixed recipients, authorized reads, and PostgreSQL
+outbox capture. M3 adds offers, votes, selection, confirmation, and matches.
+M4 adds relay, AWS SDK/SQS/Floci, inbox, SMTP, email rendering, delivery retries,
+and DLQ behavior. Listings, direct invitations, billing, advanced trust tooling,
+geospatial search, and cloud deployment are deferred. The delivery components
+in the diagrams below remain target architecture.
 
 ## 1. Purpose
 
@@ -231,7 +231,7 @@ See [ADR-0003](adr/0003-versioned-requests-and-provider-confirmation.md).
 
 ## 7. Critical workflows
 
-### 7.1 Request-first workflow (M2, planned)
+### 7.1 Request-first workflow (M2, implemented)
 
 ```mermaid
 sequenceDiagram
@@ -346,8 +346,8 @@ specified in [Consistency and Concurrency](consistency-and-concurrency.md).
 
 ## 9. Asynchronous processing
 
-The planned outbox introduces capture in M2 and delivery in M4. Messaging's
-M2 append API must join the caller transaction; the immutable versioned envelope
+The outbox implements capture in M2 and reserves delivery for M4. Messaging's
+M2 append API joins the caller transaction; the immutable versioned envelope
 contains only safe identifiers and minimal event facts. It contains no private
 fields. No M2 business command waits for a queue or notification.
 

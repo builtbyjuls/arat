@@ -9,8 +9,8 @@ milestone is called complete.
 Milestone and phase numbers refer to the same delivery sequence. This document
 uses `M0`, `M1`, and so on consistently.
 
-Current stage: M1 is complete. M2, versioned provider requests and recipient
-privacy, is next.
+Current stage: M2 is complete. M3, offers, selection, and provider confirmation,
+is next.
 
 ## Status vocabulary
 
@@ -30,8 +30,8 @@ documentation agree.
 ```mermaid
 flowchart LR
     M0[M0 Runtime foundation<br/>Complete] --> M1[M1 Private collaboration<br/>Complete]
-    M1 --> M2[M2 Provider requests<br/>Next]
-    M2 --> M3[M3 Offers and matches<br/>Planned]
+    M1 --> M2[M2 Provider requests<br/>Complete]
+    M2 --> M3[M3 Offers and matches<br/>Next]
     M3 --> M4[M4 Reliable delivery<br/>Planned]
     M4 --> R[Release evidence and hardening<br/>Planned]
 
@@ -75,7 +75,7 @@ Primary evidence:
 - Focused integration tests cover authorization, privacy, idempotency, ETags,
   audit records, and failure rollback.
 
-### M2: Versioned provider requests and recipient privacy - Next
+### M2: Versioned provider requests and recipient privacy - Complete
 
 Outcome:
 
@@ -108,9 +108,12 @@ it includes no relay, AWS SDK, SQS, Floci, inbox, SMTP, email rendering, retries
 or DLQ behavior. Those delivery components begin in M4. Tests also prove real
 PostgreSQL provider-root/FK lock compatibility and compact resource-based replay
 of maximum multibyte snapshots with sensitive-looking valid attribute keys.
-M2 remains planned until that executable evidence is committed.
+Executable evidence includes `MilestoneTwoJourneyIT` for the complete HTTP and
+OpenAPI journey, focused rollback and separate-connection race suites, database
+immutability tests, and the normal `./mvnw clean verify` lane. M2 persists
+durable pending outbox rows but does not relay or deliver them.
 
-### M3: Offers, selection, and provider confirmation - Planned
+### M3: Offers, selection, and provider confirmation - Next
 
 Outcome:
 

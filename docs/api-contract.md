@@ -3,9 +3,10 @@
 ## Status
 
 This document defines the HTTP contract at resource and behavior level. The
-Milestone 1 collaboration routes and problem-envelope codes are implemented
-and exposed as executable OpenAPI at `/v3/api-docs`; their component test is
-`MilestoneOneJourneyIT`. Release 1 is request-first; later-extension sections
+Milestone 1 collaboration and Milestone 2 provider-request routes and
+problem-envelope codes are implemented and exposed as executable OpenAPI at
+`/v3/api-docs`; their journey tests are `MilestoneOneJourneyIT` and
+`MilestoneTwoJourneyIT`. Release 1 is request-first; later-extension sections
 remain planned and are labeled explicitly.
 
 ## Principles
@@ -406,7 +407,7 @@ is checked before plan state. Therefore a pre-cancellation ETag returns 412;
 a new key with the current cancelled-plan ETag reaches state validation and
 returns 409.
 
-## Milestone 2 provider-request contract (partially implemented)
+## Milestone 2 provider-request contract (implemented)
 
 M2 ends at immutable request publication and authorized access. It captures
 notification intent in PostgreSQL but adds no relay, AWS SDK, SQS, Floci,
@@ -689,6 +690,10 @@ remain 400 and 401. Required missing, malformed, and stale version preconditions
 return 428 `PRECONDITION_REQUIRED`, 400 `INVALID_PRECONDITION`, and 412
 `PRECONDITION_FAILED`. Validation failures use 422 `VALIDATION_FAILED`;
 changed input under a used key uses 409 `IDEMPOTENCY_KEY_REUSED`.
+
+`MilestoneTwoJourneyIT` exercises the complete local-actor HTTP journey and
+validates every M2 operation, success schema, required header, documented
+response, and stable problem code through executable OpenAPI.
 
 | Command | Success | Authorization and domain failures |
 | --- | --- | --- |

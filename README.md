@@ -11,16 +11,17 @@ organizer selects one offer, and the provider confirms the match.
 
 The name comes from Filipino backslang for "tara", or "let's go."
 
-Milestones 0 and 1 provide a runnable application foundation and an implemented
-private collaboration workflow. Marketplace workflows remain planned, and the
-documents describe the evidence required before making performance or
-scalability claims beyond the implemented foundation.
+Milestones 0 through 2 provide a runnable application foundation, private
+collaboration, and versioned provider requests with recipient privacy. Offers,
+matches, and notification delivery remain planned, and the documents describe
+the evidence required before making performance or scalability claims.
 
-Current stage: M1 is complete. M2, versioned provider requests and recipient
-privacy, is next. M2 will finalize organizer-selected terms, publish immutable
-requests to fixed verified-provider audiences, authorize reads, and capture
-notification intent in PostgreSQL. Offers and matches begin in M3; outbox relay
-and notification delivery begin in M4. See the [Project Roadmap](docs/roadmap.md).
+Current stage: M2 is complete. M3, offers, selection, and provider
+confirmation, is next. M2 finalizes organizer-selected terms, publishes
+immutable requests to fixed verified-provider audiences, authorizes reads, and
+captures durable notification intent in PostgreSQL. The outbox rows are durable,
+but relay and notification delivery are not implemented; those begin in M4.
+See the [Project Roadmap](docs/roadmap.md).
 
 ## Why this project exists
 
@@ -101,10 +102,10 @@ boundaries, and executable integration and concurrency tests.
 ## Architecture summary
 
 Arat? starts as a modular monolith. PostgreSQL owns authoritative workflow
-state and concurrency coordination. A planned transactional outbox separates
-committed domain changes from asynchronous provider and group notifications. M2 adds
-capture only; the relay, queue, and notification components below are M4 target
-design, not implemented delivery.
+state and concurrency coordination. The implemented transactional outbox
+separates committed domain changes from future asynchronous provider and group
+notifications. M2 adds durable capture only; the relay, queue, and notification
+components below are M4 target design, not implemented delivery.
 
 ~~~mermaid
 flowchart LR
@@ -177,7 +178,7 @@ better-quality group requests.
 
 ## Local-first development
 
-Normal M0 and M1 development and verification need Docker but no AWS account,
+Normal M0 through M2 development and verification need Docker but no AWS account,
 cloud credentials, Floci, Mailpit, or paid service. Docker runs PostgreSQL for
 host-run application development and Testcontainers tests; the full Compose
 stack also runs the application and Prometheus.
@@ -192,7 +193,7 @@ stack also runs the application and Prometheus.
 | Local configuration | Parameter Store and Secrets Manager |
 
 Floci is intentionally limited to SQS and its DLQ beginning in M4. It remains
-absent through M2's planned PostgreSQL-only outbox capture; that milestone has
+absent from M2's implemented PostgreSQL-only outbox capture; that milestone has
 no AWS SDK, relay, inbox, SMTP, email rendering, delivery retries, or DLQ
 behavior. Mailpit likewise begins with M4 email delivery. PostgreSQL runs
 directly because its transaction and locking behavior is part of the product.
@@ -217,9 +218,9 @@ directly because its transaction and locking behavior is part of the product.
 | Application foundation | Implemented: runnable Spring Boot, local auth, health, metrics, Compose, and CI smoke checks |
 | Database schema and migrations | Implemented: Flyway baseline and PostgreSQL test foundation |
 | Planning workflow | Implemented: private groups, invitations, collaborative plans, requirement replacement, member preferences, and cancellation |
-| Marketplace workflows | Next: M2 versioned provider requests and recipient privacy |
+| Marketplace workflows | Implemented through M2 provider request publication, versioning, recipient privacy, closure, and cancellation |
 | Billing simulation | Not started |
-| Concurrency evidence | Implemented for M1 collaboration; marketplace concurrency work remains planned |
+| Concurrency evidence | Implemented for M1 collaboration and M2 publication, replacement, closure, cancellation, and eligibility fencing |
 | Performance measurements | Not started |
 
 No benchmark results are published because no reproducible benchmark has been
@@ -296,6 +297,24 @@ Run it from a clean checkout with Docker available:
 The test starts PostgreSQL through Testcontainers, applies Flyway migrations,
 and starts the application test context. It needs no AWS account, Floci, Redis,
 Kafka, external email service, or paid service.
+
+### Milestone 2 provider request journey
+
+The PostgreSQL-backed M2 journey uses the local provider, operator, group, and
+unrelated-provider actors through public HTTP behavior. It covers provider
+verification, zero-recipient rejection, immutable request publication and
+replacement, member and provider allowlists, privacy, replay, stale ETags,
+eligibility fencing, database-time actionability, closure, durable outbox rows,
+and every M2 executable OpenAPI operation and problem code.
+
+Run it from a clean checkout with Docker available:
+
+~~~bash
+./mvnw verify -Dit.test=MilestoneTwoJourneyIT
+~~~
+
+The journey needs PostgreSQL only. Its outbox rows remain pending because M2
+does not implement a relay, queue, email rendering, or notification delivery.
 
 ### Full Compose stack
 

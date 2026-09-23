@@ -8,10 +8,11 @@ This document defines the target testing strategy for the planned marketplace,
 messaging, billing, and load work. M1 group and planning correctness already
 have executable PostgreSQL evidence in `CollaborationRaceOutcomesIT`, while the
 HTTP journey and OpenAPI contract are covered by `MilestoneOneJourneyIT`.
-Those later suites and results remain planned. M2 is next: PostgreSQL-only
-publication, access, and outbox capture. M3 adds offers, votes, selection,
-confirmation, and matches. M4 adds relay, AWS SDK, SQS/Floci, inbox, SMTP, email
-rendering, delivery retries, and DLQ tests. No M2 test needs those M4 components.
+M2 now has focused PostgreSQL suites plus `MilestoneTwoJourneyIT` for the full
+HTTP and executable OpenAPI journey. M3 adds offers, votes, selection,
+confirmation, and matches. M4 adds relay, AWS SDK, SQS/Floci, inbox, SMTP,
+email rendering, delivery retries, and DLQ tests. No M2 test needs those M4
+components.
 
 ## Quality goals
 
@@ -70,7 +71,7 @@ The default build should run unit and integration tests. Component and load test
 - Assert final database state and durable side effects, not the order in which threads happened to finish.
 - Give every asynchronous assertion a finite timeout and a useful failure message.
 
-## Milestone 2 contract and failure matrix (planned)
+## Milestone 2 contract and failure matrix (implemented)
 
 These are acceptance requirements, not test results. Use PostgreSQL
 Testcontainers with the real Flyway migrations wherever database behavior
@@ -105,9 +106,9 @@ matters, deterministic coordination, and separate competing connections.
 | Closure/cancellation are atomic | Close only OPEN; clear pointer, return plan to COLLABORATING, preserve history. Cancel OPEN_FOR_OFFERS through existing route; request and plan become CANCELLED atomically. Race with replacement and assert one coherent ETag/state/event outcome. |
 | HTTP contract is complete | Cover every M2 problem code/status, privacy and role failure, ETag ordering, validation, and replay; journey from provider create/verify through publish, read, replace, close, and cancel. Executable OpenAPI arrives with implementation. |
 
-Run the normal `./mvnw clean verify` lane as the M2 implementation grows. This
-includes existing M0/M1 regression coverage. No offers, notification delivery,
-new fixtures, or executable OpenAPI changes are claimed by this contract alone.
+The normal `./mvnw clean verify` lane includes the M0-M2 regression coverage.
+M2 proves durable outbox capture only; it makes no offer, relay, queue, email,
+or notification-delivery claim.
 
 ## Invariant test matrix
 

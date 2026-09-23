@@ -619,7 +619,7 @@ M3 adds offer submission under the same eligibility guards. Revocation is an
 audited state change; it does not delete historical offers or matches. A provider's own historical offers and matches remain
 readable through provider membership even after an eligibility change.
 
-### `provider` (M2, partially implemented)
+### `provider` (M2, implemented)
 
 Providers owns organization identity, active staff membership, verification,
 and eligibility data. Important profile fields are `id`, `display_name`,
