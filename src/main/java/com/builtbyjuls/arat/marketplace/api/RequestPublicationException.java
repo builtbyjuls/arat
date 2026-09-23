@@ -1,20 +1,21 @@
-package com.builtbyjuls.arat.planning.api;
+package com.builtbyjuls.arat.marketplace.api;
 
-public class PlanningRequestTransitionException extends RuntimeException {
+public class RequestPublicationException extends RuntimeException {
 
     public enum Reason {
         PRIVATE_RESOURCE_NOT_FOUND,
+        FORBIDDEN_ROLE,
         PRECONDITION_FAILED,
         INVALID_PLAN_STATE,
-        INVALID_REQUEST_STATE,
-        FINALIZATION_NOT_FOUND,
         FINALIZATION_VERSION_CHANGED,
-        DEADLINE_ELAPSED
+        NO_ELIGIBLE_PROVIDERS,
+        RECIPIENT_LIMIT_EXCEEDED,
+        REQUEST_DEADLINE_EXPIRED
     }
 
     private final Reason reason;
 
-    public PlanningRequestTransitionException(Reason reason) {
+    public RequestPublicationException(Reason reason) {
         super(reason.name());
         this.reason = reason;
     }

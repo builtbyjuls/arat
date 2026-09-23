@@ -154,6 +154,12 @@ public class PlanningRequestAccess {
                 .map(observation -> snapshot(observation.request(), observation.actionable()));
     }
 
+    @Transactional(readOnly = true)
+    public Optional<ProviderSafeRequestSnapshot> findOriginalPublicationSnapshot(UUID requestId) {
+        return requestRepository.findById(requireId(requestId, "requestId"))
+                .map(request -> snapshot(request, "OPEN", true));
+    }
+
     private LockedPublicationState lockPublicationState(UUID planId, long expectedPlanVersion) {
         var plan = lockPlan(planId);
         requirePlanVersion(plan, expectedPlanVersion);
@@ -185,10 +191,12 @@ public class PlanningRequestAccess {
     private RequirementFinalization requireCurrentFinalization(
             UUID finalizationId, Plan plan, OffsetDateTime decisionTime) {
         var finalization = finalizationRepository.findById(finalizationId)
-                .orElseThrow(() -> failure(PlanningRequestTransitionException.Reason.FINALIZATION_MISMATCH));
-        if (!finalization.planId().equals(plan.planId())
-                || finalization.basisPlanVersion() != plan.version()) {
-            throw failure(PlanningRequestTransitionException.Reason.FINALIZATION_MISMATCH);
+                .orElseThrow(() -> failure(PlanningRequestTransitionException.Reason.FINALIZATION_NOT_FOUND));
+        if (!finalization.planId().equals(plan.planId())) {
+            throw failure(PlanningRequestTransitionException.Reason.FINALIZATION_NOT_FOUND);
+        }
+        if (finalization.basisPlanVersion() != plan.version()) {
+            throw failure(PlanningRequestTransitionException.Reason.FINALIZATION_VERSION_CHANGED);
         }
         if (!decisionTime.isBefore(finalization.offerDeadline())) {
             throw failure(PlanningRequestTransitionException.Reason.DEADLINE_ELAPSED);
@@ -265,10 +273,14 @@ public class PlanningRequestAccess {
     }
 
     private ProviderSafeRequestSnapshot snapshot(PublishedRequest request, boolean actionable) {
+        return snapshot(request, request.state().name(), actionable);
+    }
+
+    private ProviderSafeRequestSnapshot snapshot(PublishedRequest request, String state, boolean actionable) {
         return new ProviderSafeRequestSnapshot(
                 request.requestId(),
                 request.requestVersion(),
-                request.state().name(),
+                state,
                 request.distributionMode().name(),
                 request.category().name(),
                 request.timeZone(),

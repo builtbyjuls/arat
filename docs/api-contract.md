@@ -404,7 +404,7 @@ is checked before plan state. Therefore a pre-cancellation ETag returns 412;
 a new key with the current cancelled-plan ETag reaches state validation and
 returns 409.
 
-## Milestone 2 provider-request contract (planned)
+## Milestone 2 provider-request contract (partially implemented)
 
 M2 ends at immutable request publication and authorized access. It captures
 notification intent in PostgreSQL but adds no relay, AWS SDK, SQS, Floci,
@@ -558,6 +558,11 @@ gap is required.
 
 ### Publish a requirement
 
+Initial publication when the plan has no current request, including reopening
+after a terminal request version, is implemented with PostgreSQL endpoint
+evidence in `RequestPublicationIT`. A plan with a current request receives 409
+`INVALID_PLAN_STATE`; direct replacement of that request remains planned.
+
 ~~~http
 POST /api/v1/plans/{planId}/published-requests
 Idempotency-Key: ...
@@ -661,8 +666,9 @@ worker; delayed cleanup cannot make an expired request actionable.
 ### M2 command outcomes and stable problems
 
 Provider creation, reads, profile replacement, verification submission and
-decision, suspension, restoration, and requirement finalization are implemented.
-Remaining entries are planned.
+decision, suspension, restoration, requirement finalization, and initial or
+reopened request publication are implemented. Remaining entries, including
+direct replacement, request reads, and closure, are planned.
 Common malformed syntax and authentication outcomes
 remain 400 and 401. Required missing, malformed, and stale version preconditions
 return 428 `PRECONDITION_REQUIRED`, 400 `INVALID_PRECONDITION`, and 412

@@ -11,9 +11,8 @@ public record ProviderEligibilityCriteria(String category, String serviceAreaCod
         }
         if (serviceAreaCode == null
                 || serviceAreaCode.isBlank()
-                || serviceAreaCode.length() > 64
-                || !serviceAreaCode.equals(serviceAreaCode.trim())) {
-            throw new IllegalArgumentException("serviceAreaCode must be trimmed, non-blank, and at most 64 characters");
+                || serviceAreaCode.length() > 64) {
+            throw new IllegalArgumentException("serviceAreaCode must be non-blank and at most 64 characters");
         }
     }
 }

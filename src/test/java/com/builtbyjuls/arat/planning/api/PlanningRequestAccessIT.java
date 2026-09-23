@@ -216,7 +216,7 @@ class PlanningRequestAccessIT extends PostgreSqlIntegrationTest {
         assertFailure(
                 () -> inTransaction(() -> access.create(
                         publishCommand(fixture, requestId, other.finalizationId(), 1))),
-                PlanningRequestTransitionException.Reason.FINALIZATION_MISMATCH);
+                PlanningRequestTransitionException.Reason.FINALIZATION_NOT_FOUND);
 
         inTransaction(() -> access.create(
                 publishCommand(fixture, requestId, fixture.finalizationId(), 1)));
