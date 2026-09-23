@@ -675,8 +675,10 @@ worker; delayed cleanup cannot make an expired request actionable.
 Provider creation, reads, profile replacement, verification submission and
 decision, suspension, restoration, requirement finalization, initial,
 reopened, or replacement request publication, and group current/detail/history
-reads are implemented. `PublishedRequestQueryIT` provides PostgreSQL endpoint
-evidence for the group request reads. Provider reads and closure remain planned.
+reads are implemented. Provider request detail is implemented with PostgreSQL
+endpoint and OpenAPI evidence in `ProviderPublishedRequestDetailIT`.
+`PublishedRequestQueryIT` provides PostgreSQL endpoint evidence for the group
+request reads. Provider feed and closure remain planned.
 Common malformed syntax and authentication outcomes
 remain 400 and 401. Required missing, malformed, and stale version preconditions
 return 428 `PRECONDITION_REQUIRED`, 400 `INVALID_PRECONDITION`, and 412

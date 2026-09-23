@@ -7,6 +7,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -68,6 +69,19 @@ public class RequestRecipientRepository {
                 .param("providerId", providerId)
                 .query(this::mapRecipient)
                 .list();
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<RequestRecipient> findActiveByRequestIdAndProviderId(UUID publishedRequestId, UUID providerId) {
+        return jdbcClient.sql(selectRecipients() + """
+                        WHERE published_request_id = :publishedRequestId
+                          AND provider_id = :providerId
+                          AND access_state = 'ACTIVE'
+                        """)
+                .param("publishedRequestId", publishedRequestId)
+                .param("providerId", providerId)
+                .query(this::mapRecipient)
+                .optional();
     }
 
     private String selectRecipients() {
