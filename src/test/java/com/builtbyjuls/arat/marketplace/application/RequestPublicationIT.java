@@ -16,6 +16,8 @@ import com.builtbyjuls.arat.PostgreSqlIntegrationTest;
 import com.builtbyjuls.arat.groups.api.GroupMembershipAccess;
 import com.builtbyjuls.arat.identity.api.AuthenticatedActor;
 import com.builtbyjuls.arat.marketplace.api.PublishRequestCommand;
+import com.builtbyjuls.arat.marketplace.domain.RequestRecipient;
+import com.builtbyjuls.arat.marketplace.infrastructure.RequestRecipientRepository;
 import com.builtbyjuls.arat.matching.api.MatchRequestRecipientsCommand;
 import com.builtbyjuls.arat.matching.api.MatchingAccess;
 import com.builtbyjuls.arat.messaging.api.AppendOutboxEventCommand;
@@ -23,6 +25,11 @@ import com.builtbyjuls.arat.messaging.api.MessagingAccess;
 import com.builtbyjuls.arat.planning.api.CloseRequestVersionCommand;
 import com.builtbyjuls.arat.planning.api.PlanningRequestAccess;
 import com.builtbyjuls.arat.planning.api.PublishRequestVersionCommand;
+import com.builtbyjuls.arat.platform.audit.AuditEvent;
+import com.builtbyjuls.arat.platform.audit.AuditEventWriter;
+import com.builtbyjuls.arat.platform.idempotency.CompletedIdempotencyResponse;
+import com.builtbyjuls.arat.platform.idempotency.IdempotencyRepository;
+import com.builtbyjuls.arat.platform.idempotency.IdempotencyScope;
 import com.builtbyjuls.arat.web.CorrelationIdFilter;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -38,6 +45,8 @@ import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -72,6 +81,9 @@ class RequestPublicationIT extends PostgreSqlIntegrationTest {
     @MockitoSpyBean private PlanningRequestAccess planningRequestAccess;
     @MockitoSpyBean private MatchingAccess matchingAccess;
     @MockitoSpyBean private MessagingAccess messagingAccess;
+    @MockitoSpyBean private RequestRecipientRepository recipientRepository;
+    @MockitoSpyBean private AuditEventWriter auditEventWriter;
+    @MockitoSpyBean private IdempotencyRepository idempotencyRepository;
 
     private MockMvc mockMvc;
     private TransactionTemplate transactionTemplate;
@@ -359,6 +371,123 @@ class RequestPublicationIT extends PostgreSqlIntegrationTest {
     }
 
     @Test
+    void replacesCurrentRequestWithFreshAudienceAndMonotonicVersions() throws Exception {
+        var fixture = fixture(2, false, false);
+        var firstResponse = publishAs(
+                        fixture.organizerId(), fixture.planId(), fixture.finalizationId(),
+                        "replace-first", "\"1\"")
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.requestVersion").value(1))
+                .andReturn().getResponse();
+        var firstRequestId = UUID.fromString(
+                objectMapper.readTree(firstResponse.getContentAsByteArray()).path("requestId").asText());
+        var firstSnapshot = requestSnapshotContent(firstRequestId);
+
+        var removedProviderId = fixture.providerIds().getFirst();
+        var retainedProviderId = fixture.providerIds().getLast();
+        jdbcClient.sql("""
+                        UPDATE provider_organization
+                        SET verification_status = 'SUSPENDED', version = version + 1,
+                            eligibility_version = eligibility_version + 1
+                        WHERE provider_id = :providerId
+                        """)
+                .param("providerId", removedProviderId)
+                .update();
+        var addedProviderId = insertEligibleProvider(fixture.areaCode(), "Replacement provider");
+
+        var secondFinalizationId = insertFinalization(fixture, 2, false);
+        var secondResponse = publishAs(
+                        fixture.organizerId(), fixture.planId(), secondFinalizationId,
+                        "replace-second", "\"2\"")
+                .andExpect(status().isCreated())
+                .andExpect(header().string("ETag", "\"3\""))
+                .andExpect(jsonPath("$.requestVersion").value(2))
+                .andExpect(jsonPath("$.state").value("OPEN"))
+                .andReturn().getResponse();
+        var secondRequestId = UUID.fromString(
+                objectMapper.readTree(secondResponse.getContentAsByteArray()).path("requestId").asText());
+
+        assertPlan(fixture, "OPEN_FOR_OFFERS", secondRequestId, 3);
+        assertThat(requestStates(fixture.planId())).containsExactly("SUPERSEDED", "OPEN");
+        assertThat(requestSnapshotContent(firstRequestId)).isEqualTo(firstSnapshot);
+        assertThat(providerIds(firstRequestId)).containsExactlyElementsOf(fixture.providerIds());
+        assertThat(providerIds(secondRequestId)).containsExactlyElementsOf(
+                List.of(retainedProviderId, addedProviderId).stream()
+                        .sorted(java.util.Comparator.comparing(UUID::toString))
+                        .toList());
+        assertThat(eventTypes(firstRequestId)).containsExactly(
+                "ProviderRequestPublished", "ProviderRequestPublished",
+                "ProviderRequestSuperseded", "ProviderRequestSuperseded");
+        assertThat(eventTypes(secondRequestId)).containsExactly(
+                "ProviderRequestPublished", "ProviderRequestPublished");
+        assertSafeOutboxPayloads(firstRequestId);
+        assertSafeOutboxPayloads(secondRequestId);
+
+        var thirdFinalizationId = insertFinalization(fixture, 3, false);
+        var thirdResponse = publishAs(
+                        fixture.organizerId(), fixture.planId(), thirdFinalizationId,
+                        "replace-third", "\"3\"")
+                .andExpect(status().isCreated())
+                .andExpect(header().string("ETag", "\"4\""))
+                .andExpect(jsonPath("$.requestVersion").value(3))
+                .andReturn().getResponse();
+        var thirdRequestId = UUID.fromString(
+                objectMapper.readTree(thirdResponse.getContentAsByteArray()).path("requestId").asText());
+
+        assertPlan(fixture, "OPEN_FOR_OFFERS", thirdRequestId, 4);
+        assertThat(requestVersions(fixture.planId())).containsExactly(1L, 2L, 3L);
+        assertThat(requestStates(fixture.planId())).containsExactly("SUPERSEDED", "SUPERSEDED", "OPEN");
+
+        publishAs(fixture.organizerId(), fixture.planId(), fixture.finalizationId(), "replace-first", "\"1\"")
+                .andExpect(status().isCreated())
+                .andExpect(header().string("ETag", firstResponse.getHeader("ETag")))
+                .andExpect(header().string("Location", firstResponse.getHeader("Location")))
+                .andExpect(jsonPath("$.requestId").value(firstRequestId.toString()))
+                .andExpect(jsonPath("$.state").value("OPEN"))
+                .andExpect(jsonPath("$.actionable").value(true));
+        publishAs(fixture.organizerId(), fixture.planId(), secondFinalizationId, "replace-second", "\"2\"")
+                .andExpect(status().isCreated())
+                .andExpect(header().string("ETag", secondResponse.getHeader("ETag")))
+                .andExpect(header().string("Location", secondResponse.getHeader("Location")))
+                .andExpect(jsonPath("$.requestId").value(secondRequestId.toString()))
+                .andExpect(jsonPath("$.state").value("OPEN"))
+                .andExpect(jsonPath("$.actionable").value(true));
+
+        assertThat(publicationCount(fixture.planId())).isEqualTo(3);
+        assertThat(count("SELECT count(*) FROM audit_event WHERE action = 'published_request.published' AND plan_id = :planId",
+                "planId", fixture.planId())).isEqualTo(3);
+    }
+
+    @ParameterizedTest
+    @EnumSource(ReplacementFailure.class)
+    void failedReplacementRestoresTheCompleteCurrentRequest(ReplacementFailure failure) throws Exception {
+        var fixture = fixture(1, false, false);
+        var first = publicationService.publish(command(fixture, "rollback-first", 1));
+        var firstRequestId = first.request().requestId();
+        var firstSnapshot = requestSnapshotContent(firstRequestId);
+        var secondFinalizationId = insertFinalization(fixture, 2, false);
+
+        forceReplacementFailure(failure);
+
+        publishAs(
+                        fixture.organizerId(), fixture.planId(), secondFinalizationId,
+                        "rollback-second-" + failure.name().toLowerCase(java.util.Locale.ROOT), "\"2\"")
+                .andExpect(status().isInternalServerError());
+
+        assertPlan(fixture, "OPEN_FOR_OFFERS", firstRequestId, 2);
+        assertThat(publicationCount(fixture.planId())).isOne();
+        assertThat(requestStates(fixture.planId())).containsExactly("OPEN");
+        assertThat(requestSnapshotContent(firstRequestId)).isEqualTo(firstSnapshot);
+        assertThat(providerIds(firstRequestId)).containsExactlyElementsOf(fixture.providerIds());
+        assertThat(eventTypes(firstRequestId)).containsExactly("ProviderRequestPublished");
+        assertThat(count("SELECT count(*) FROM audit_event WHERE action = 'published_request.published' AND plan_id = :planId",
+                "planId", fixture.planId())).isOne();
+        assertThat(count("SELECT count(*) FROM idempotency_record WHERE operation = :operation AND actor_id = :actorId",
+                "operation", RequestPublicationService.PUBLISH_REQUEST_OPERATION,
+                "actorId", fixture.organizerId())).isOne();
+    }
+
+    @Test
     void rollsBackWhenGroupsBoundaryFails() throws Exception {
         var fixture = fixture(1, false, false);
         doThrow(new IllegalStateException("forced groups boundary failure"))
@@ -617,6 +746,52 @@ class RequestPublicationIT extends PostgreSqlIntegrationTest {
         return finalizationId;
     }
 
+    private UUID insertEligibleProvider(String areaCode, String displayName) {
+        var providerId = UUID.randomUUID();
+        jdbcClient.sql("""
+                        INSERT INTO provider_organization (
+                            provider_id, display_name, status, verification_status,
+                            version, eligibility_version
+                        )
+                        VALUES (:providerId, :displayName, 'ACTIVE', 'VERIFIED', 2, 2)
+                        """)
+                .param("providerId", providerId)
+                .param("displayName", displayName)
+                .update();
+        jdbcClient.sql("""
+                        INSERT INTO provider_supported_category (provider_id, category)
+                        VALUES (:providerId, 'COURT')
+                        """)
+                .param("providerId", providerId)
+                .update();
+        jdbcClient.sql("""
+                        INSERT INTO provider_service_area (provider_id, area_code)
+                        VALUES (:providerId, :areaCode)
+                        """)
+                .param("providerId", providerId)
+                .param("areaCode", areaCode)
+                .update();
+        return providerId;
+    }
+
+    private void forceReplacementFailure(ReplacementFailure failure) {
+        var exception = new IllegalStateException("forced replacement " + failure.name().toLowerCase(java.util.Locale.ROOT));
+        switch (failure) {
+            case RECIPIENT -> doThrow(exception)
+                    .when(AopTestUtils.<RequestRecipientRepository>getTargetObject(recipientRepository))
+                    .insert(any(RequestRecipient.class));
+            case EVENT -> doThrow(exception)
+                    .when(AopTestUtils.<MessagingAccess>getTargetObject(messagingAccess))
+                    .append(any(AppendOutboxEventCommand.class));
+            case AUDIT -> doThrow(exception)
+                    .when(AopTestUtils.<AuditEventWriter>getTargetObject(auditEventWriter))
+                    .append(any(AuditEvent.class));
+            case REPLAY -> doThrow(exception)
+                    .when(AopTestUtils.<IdempotencyRepository>getTargetObject(idempotencyRepository))
+                    .complete(any(IdempotencyScope.class), any(CompletedIdempotencyResponse.class));
+        }
+    }
+
     private LinkedHashMap<String, Object> maximumAttributes() {
         var value = "\u4e00".repeat(120);
         var attributes = new LinkedHashMap<String, Object>();
@@ -717,6 +892,53 @@ class RequestPublicationIT extends PostgreSqlIntegrationTest {
                 .single();
     }
 
+    private String requestSnapshotContent(UUID requestId) {
+        return jdbcClient.sql("""
+                        SELECT (to_jsonb(request_row) - 'state' - 'closed_at')::text
+                        FROM planning_published_request request_row
+                        WHERE request_id = :requestId
+                        """)
+                .param("requestId", requestId)
+                .query(String.class)
+                .single();
+    }
+
+    private List<Long> requestVersions(UUID planId) {
+        return jdbcClient.sql("""
+                        SELECT request_version
+                        FROM planning_published_request
+                        WHERE plan_id = :planId
+                        ORDER BY request_version
+                        """)
+                .param("planId", planId)
+                .query(Long.class)
+                .list();
+    }
+
+    private List<String> requestStates(UUID planId) {
+        return jdbcClient.sql("""
+                        SELECT state
+                        FROM planning_published_request
+                        WHERE plan_id = :planId
+                        ORDER BY request_version
+                        """)
+                .param("planId", planId)
+                .query(String.class)
+                .list();
+    }
+
+    private List<String> eventTypes(UUID requestId) {
+        return jdbcClient.sql("""
+                        SELECT event_type
+                        FROM messaging_outbox
+                        WHERE aggregate_id = :requestId
+                        ORDER BY event_type, business_key
+                        """)
+                .param("requestId", requestId)
+                .query(String.class)
+                .list();
+    }
+
     private List<UUID> providerIds(UUID requestId) {
         return jdbcClient.sql("""
                         SELECT provider_id
@@ -767,5 +989,12 @@ class RequestPublicationIT extends PostgreSqlIntegrationTest {
     }
 
     private record PlanRow(String state, UUID currentRequestId, long version) {
+    }
+
+    private enum ReplacementFailure {
+        RECIPIENT,
+        EVENT,
+        AUDIT,
+        REPLAY
     }
 }

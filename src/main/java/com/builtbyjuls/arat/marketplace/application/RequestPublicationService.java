@@ -41,7 +41,8 @@ import tools.jackson.databind.ObjectMapper;
 public class RequestPublicationService {
 
     public static final String PUBLISH_REQUEST_OPERATION = "plans.published-requests.publish";
-    private static final String EVENT_TYPE = "ProviderRequestPublished";
+    private static final String PUBLISHED_EVENT_TYPE = "ProviderRequestPublished";
+    private static final String SUPERSEDED_EVENT_TYPE = "ProviderRequestSuperseded";
 
     private final GroupMembershipAccess groupMembershipAccess;
     private final PlanningRequestAccess planningRequestAccess;
@@ -98,9 +99,6 @@ public class RequestPublicationService {
         }
 
         var preparation = prepare(command);
-        if (preparation.currentRequestId() != null) {
-            throw failure(RequestPublicationException.Reason.INVALID_PLAN_STATE);
-        }
         var selection = matchingAccess.selectRecipients(new MatchRequestRecipientsCommand(
                 preparation.terms().category(), preparation.terms().areaCode()));
         var candidates = switch (selection) {
@@ -112,8 +110,19 @@ public class RequestPublicationService {
         };
 
         var requestId = UUID.randomUUID();
-        var transition = create(command, requestId);
+        var transition = transition(command, requestId, preparation.currentRequestId() != null);
         var request = transition.request();
+        if (transition.previousRequest() != null) {
+            for (var recipient : recipientRepository.findByRequestId(transition.previousRequest().requestId())) {
+                appendEvent(
+                        SUPERSEDED_EVENT_TYPE,
+                        transition.previousRequest().requestId(),
+                        transition.previousRequest().requestVersion(),
+                        recipient.providerId(),
+                        request.publishedAt(),
+                        command.correlationId());
+            }
+        }
         for (var candidate : candidates) {
             recipientRepository.insert(new RequestRecipient(
                     requestId,
@@ -123,18 +132,13 @@ public class RequestPublicationService {
                     null,
                     RequestRecipientAccessState.ACTIVE,
                     request.publishedAt()));
-            messagingAccess.append(new AppendOutboxEventCommand(
-                    UUID.randomUUID(),
-                    businessKey(requestId, candidate.providerId()),
-                    new OutboxEventEnvelope(
-                            EVENT_TYPE,
-                            1,
-                            request.publishedAt(),
-                            "PublishedRequest",
-                            requestId,
-                            request.requestVersion(),
-                            command.correlationId(),
-                            payload(requestId, candidate.providerId()))));
+            appendEvent(
+                    PUBLISHED_EVENT_TYPE,
+                    requestId,
+                    request.requestVersion(),
+                    candidate.providerId(),
+                    request.publishedAt(),
+                    command.correlationId());
         }
         auditEventWriter.append(new AuditEvent(
                 UUID.randomUUID(),
@@ -168,15 +172,18 @@ public class RequestPublicationService {
         }
     }
 
-    private com.builtbyjuls.arat.planning.api.RequestVersionTransition create(
-            PublishRequestCommand command, UUID requestId) {
+    private com.builtbyjuls.arat.planning.api.RequestVersionTransition transition(
+            PublishRequestCommand command, UUID requestId, boolean replacement) {
         try {
-            return planningRequestAccess.create(new PublishRequestVersionCommand(
+            var transitionCommand = new PublishRequestVersionCommand(
                     requestId,
                     command.planId(),
                     command.finalizationId(),
                     command.actorId(),
-                    command.expectedPlanVersion()));
+                    command.expectedPlanVersion());
+            return replacement
+                    ? planningRequestAccess.supersede(transitionCommand)
+                    : planningRequestAccess.create(transitionCommand);
         } catch (PlanningRequestTransitionException exception) {
             throw translate(exception);
         }
@@ -205,8 +212,29 @@ public class RequestPublicationService {
         }
     }
 
-    private String businessKey(UUID requestId, UUID providerId) {
-        return EVENT_TYPE + ":" + requestId + ":" + providerId;
+    private void appendEvent(
+            String eventType,
+            UUID requestId,
+            long requestVersion,
+            UUID providerId,
+            java.time.OffsetDateTime occurredAt,
+            String correlationId) {
+        messagingAccess.append(new AppendOutboxEventCommand(
+                UUID.randomUUID(),
+                businessKey(eventType, requestId, providerId),
+                new OutboxEventEnvelope(
+                        eventType,
+                        1,
+                        occurredAt,
+                        "PublishedRequest",
+                        requestId,
+                        requestVersion,
+                        correlationId,
+                        payload(requestId, providerId))));
+    }
+
+    private String businessKey(String eventType, UUID requestId, UUID providerId) {
+        return eventType + ":" + requestId + ":" + providerId;
     }
 
     private String location(UUID planId, UUID requestId) {

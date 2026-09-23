@@ -558,10 +558,11 @@ gap is required.
 
 ### Publish a requirement
 
-Initial publication when the plan has no current request, including reopening
-after a terminal request version, is implemented with PostgreSQL endpoint
-evidence in `RequestPublicationIT`. A plan with a current request receives 409
-`INVALID_PLAN_STATE`; direct replacement of that request remains planned.
+Initial publication, reopening after a terminal request version, and atomic
+replacement of a current request are implemented with PostgreSQL endpoint
+evidence in `RequestPublicationIT`. Replacement supersedes the current version,
+selects a fresh fixed audience, and installs the next version through this same
+route.
 
 ~~~http
 POST /api/v1/plans/{planId}/published-requests
@@ -666,9 +667,9 @@ worker; delayed cleanup cannot make an expired request actionable.
 ### M2 command outcomes and stable problems
 
 Provider creation, reads, profile replacement, verification submission and
-decision, suspension, restoration, requirement finalization, and initial or
-reopened request publication are implemented. Remaining entries, including
-direct replacement, request reads, and closure, are planned.
+decision, suspension, restoration, requirement finalization, and initial,
+reopened, or replacement request publication are implemented. Remaining
+entries, including request reads and closure, are planned.
 Common malformed syntax and authentication outcomes
 remain 400 and 401. Required missing, malformed, and stale version preconditions
 return 428 `PRECONDITION_REQUIRED`, 400 `INVALID_PRECONDITION`, and 412
