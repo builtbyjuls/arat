@@ -1,8 +1,9 @@
 # Consistency and Concurrency
 
-Status: M1 collaboration proof and provider verification decisions, suspension,
-restoration, and requirement finalization implemented; marketplace, messaging, billing, and load evidence
-remain target design.
+Status: M1 collaboration proof and M2 provider verification, publication,
+recipient reads, outbox capture, and manual closure are implemented.
+Request-aware plan cancellation, billing, and load evidence remain target
+design.
 
 This document defines the correctness contract for Arat?. M1 group and planning
 races have executable PostgreSQL evidence in
@@ -254,7 +255,7 @@ recipient unusable even if publication commits afterward. Restoration advances
 the version again and never revives it. Profile edits change future matching
 only. M3 offer submission and M4 delivery apply the same eligibility fence.
 
-### 4.4.1 Reads, closure, and cancellation (M2, planned)
+### 4.4.1 Reads and closure (M2, implemented); cancellation (planned)
 
 Active group members may read current requests and bounded history; outsiders
 receive the existing private-resource not-found response. Provider detail and

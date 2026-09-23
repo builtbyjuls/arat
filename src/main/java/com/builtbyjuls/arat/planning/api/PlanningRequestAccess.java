@@ -107,7 +107,7 @@ public class PlanningRequestAccess {
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
-    public RequestVersionTransition close(CloseRequestVersionCommand command) {
+    public RequestClosureTransition close(CloseRequestVersionCommand command) {
         requireCommand(command);
         var plan = lockPlan(command.planId());
         requirePlanVersion(plan, command.expectedPlanVersion());
@@ -120,7 +120,7 @@ public class PlanningRequestAccess {
                 .orElseThrow(() -> failure(PlanningRequestTransitionException.Reason.INVALID_REQUEST_STATE));
         var transitionedPlan = transitionPlan(
                 plan, PlanState.OPEN_FOR_OFFERS, request.requestId(), PlanState.COLLABORATING, null);
-        return new RequestVersionTransition(transitionedPlan.version(), snapshot(closed, false), null);
+        return new RequestClosureTransition(transitionedPlan.version(), snapshot(closed, false), closed.closedAt());
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
