@@ -619,6 +619,7 @@ see the [outbox contract](consistency-and-concurrency.md#9-outbox-and-consumer-i
 
 ~~~http
 GET /api/v1/plans/{planId}/published-requests/current
+GET /api/v1/plans/{planId}/published-requests/{requestId}
 GET /api/v1/plans/{planId}/published-requests?cursor=...&limit=...
 POST /api/v1/published-requests/{requestId}/closure
 Idempotency-Key: ...
@@ -628,7 +629,12 @@ If-Match: "plan-version"
 Active group members may read current requests and bounded history. Outsiders
 receive `404 PRIVATE_RESOURCE_NOT_FOUND`. History uses opaque versioned cursors,
 default limit 20 and maximum 100, in descending request-version order for the
-named plan. Manual closure requires organizer authority and an `OPEN` request;
+named plan. A history item is addressed by both plan and request ID, so a wrong
+plan and an unknown request have the same private-resource response. Group
+reads return only the immutable provider-safe snapshot plus request version,
+publication time, lifecycle state, effective actionable flag, and terminal
+timestamp when present. They exclude recipients, eligibility versions, outbox
+and audit data, events, and idempotency data. Manual closure requires organizer authority and an `OPEN` request;
 it marks it `CLOSED`, clears the current pointer, returns the plan to
 `COLLABORATING`, advances plan version, and preserves history atomically.
 
@@ -667,9 +673,10 @@ worker; delayed cleanup cannot make an expired request actionable.
 ### M2 command outcomes and stable problems
 
 Provider creation, reads, profile replacement, verification submission and
-decision, suspension, restoration, requirement finalization, and initial,
-reopened, or replacement request publication are implemented. Remaining
-entries, including request reads and closure, are planned.
+decision, suspension, restoration, requirement finalization, initial,
+reopened, or replacement request publication, and group current/detail/history
+reads are implemented. `PublishedRequestQueryIT` provides PostgreSQL endpoint
+evidence for the group request reads. Provider reads and closure remain planned.
 Common malformed syntax and authentication outcomes
 remain 400 and 401. Required missing, malformed, and stale version preconditions
 return 428 `PRECONDITION_REQUIRED`, 400 `INVALID_PRECONDITION`, and 412
