@@ -176,6 +176,20 @@ public class PlanRepository {
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
+    public Optional<Plan> lockPlanIfPresent(UUID planId) {
+        return jdbcClient.sql("""
+                        SELECT plan_id, group_id, title, state, current_request_id, created_by_account_id,
+                               version, created_at, updated_at
+                        FROM planning_plan
+                        WHERE plan_id = :planId
+                        FOR UPDATE
+                        """)
+                .param("planId", planId)
+                .query(this::mapPlan)
+                .optional();
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
     public Optional<Plan> updateVersioned(UUID planId, long expectedVersion, String title) {
         return jdbcClient.sql("""
                         UPDATE planning_plan
@@ -209,6 +223,37 @@ public class PlanRepository {
                         """)
                 .param("planId", planId)
                 .param("expectedVersion", expectedVersion)
+                .query(this::mapPlan)
+                .optional();
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Optional<Plan> transitionRequestPointerVersioned(
+            UUID planId,
+            long expectedVersion,
+            PlanState expectedState,
+            UUID expectedCurrentRequestId,
+            PlanState newState,
+            UUID newCurrentRequestId) {
+        return jdbcClient.sql("""
+                        UPDATE planning_plan
+                        SET state = :newState,
+                            current_request_id = :newCurrentRequestId,
+                            version = version + 1,
+                            updated_at = statement_timestamp()
+                        WHERE plan_id = :planId
+                          AND version = :expectedVersion
+                          AND state = :expectedState
+                          AND current_request_id IS NOT DISTINCT FROM CAST(:expectedCurrentRequestId AS uuid)
+                        RETURNING plan_id, group_id, title, state, current_request_id, created_by_account_id,
+                                  version, created_at, updated_at
+                        """)
+                .param("planId", planId)
+                .param("expectedVersion", expectedVersion)
+                .param("expectedState", expectedState.name())
+                .param("expectedCurrentRequestId", expectedCurrentRequestId)
+                .param("newState", newState.name())
+                .param("newCurrentRequestId", newCurrentRequestId)
                 .query(this::mapPlan)
                 .optional();
     }

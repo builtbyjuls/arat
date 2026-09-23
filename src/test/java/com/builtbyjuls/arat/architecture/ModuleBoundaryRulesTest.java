@@ -4,12 +4,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.builtbyjuls.arat.matching.api.MatchingAccess;
 import com.builtbyjuls.arat.messaging.api.MessagingAccess;
+import com.builtbyjuls.arat.planning.api.PlanningRequestAccess;
+import com.builtbyjuls.arat.planning.api.ProviderSafeRequestSnapshot;
+import com.builtbyjuls.arat.planning.api.ProviderSafeRequestTerms;
 import com.builtbyjuls.arat.providers.api.ProviderEligibilityAccess;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.Arrays;
 
 class ModuleBoundaryRulesTest {
@@ -98,9 +102,48 @@ class ModuleBoundaryRulesTest {
                 .allSatisfy(this::assertDoesNotExposeInfrastructureType);
     }
 
+    @Test
+    void planningRequestBoundaryDoesNotExposeInternalTypes() {
+        assertThat(Arrays.stream(PlanningRequestAccess.class.getDeclaredMethods())
+                .filter(method -> Modifier.isPublic(method.getModifiers())))
+                .allSatisfy(this::assertDoesNotExposePlanningInternalType);
+    }
+
+    @Test
+    void providerSafeRequestTypesExcludePrivatePlanAndGroupFields() {
+        assertThat(Arrays.stream(ProviderSafeRequestTerms.class.getRecordComponents())
+                .map(component -> component.getName()))
+                .containsExactly(
+                        "category", "timeZone", "areaCode", "radiusKm", "requestedStartsAt",
+                        "requestedEndsAt", "minimumHeadcount", "maximumHeadcount",
+                        "budgetMinimumMinorUnits", "budgetMaximumMinorUnits", "mustHaves",
+                        "providerSafeNotes", "categoryAttributes", "offerDeadline");
+        assertThat(Arrays.stream(ProviderSafeRequestSnapshot.class.getRecordComponents())
+                .map(component -> component.getName()))
+                .containsExactly(
+                        "requestId", "requestVersion", "state", "distributionMode", "category",
+                        "timeZone", "areaCode", "radiusKm", "requestedStartsAt", "requestedEndsAt",
+                        "minimumHeadcount", "maximumHeadcount", "budgetMinimumMinorUnits",
+                        "budgetMaximumMinorUnits", "mustHaves", "providerSafeNotes",
+                        "categoryAttributes", "offerDeadline", "publishedAt", "actionable");
+    }
+
     private void assertDoesNotExposeInfrastructureType(Method method) {
         assertThat(method.getReturnType().getPackageName()).doesNotContain(".infrastructure");
         assertThat(Arrays.stream(method.getParameterTypes()).map(Class::getPackageName))
                 .allSatisfy(packageName -> assertThat(packageName).doesNotContain(".infrastructure"));
+    }
+
+    private void assertDoesNotExposePlanningInternalType(Method method) {
+        assertThat(method.toGenericString())
+                .doesNotContain(".planning.infrastructure")
+                .doesNotContain(".planning.domain");
+        assertThat(method.getReturnType().getPackageName())
+                .doesNotContain(".planning.infrastructure")
+                .doesNotContain(".planning.domain");
+        assertThat(Arrays.stream(method.getParameterTypes()).map(Class::getPackageName))
+                .allSatisfy(packageName -> assertThat(packageName)
+                        .doesNotContain(".planning.infrastructure")
+                        .doesNotContain(".planning.domain"));
     }
 }
