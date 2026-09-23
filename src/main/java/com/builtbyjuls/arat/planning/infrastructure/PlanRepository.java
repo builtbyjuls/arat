@@ -44,14 +44,14 @@ public class PlanRepository {
         validateMustHaves(mustHaves);
         var plan = jdbcClient.sql("""
                         INSERT INTO planning_plan (
-                            plan_id, group_id, title, state, created_by_account_id,
+                            plan_id, group_id, title, state, current_request_id, created_by_account_id,
                             version, created_at, updated_at
                         )
                         VALUES (
-                            :planId, :groupId, :title, 'COLLABORATING', :createdByAccountId,
+                            :planId, :groupId, :title, 'COLLABORATING', NULL, :createdByAccountId,
                             1, statement_timestamp(), statement_timestamp()
                         )
-                        RETURNING plan_id, group_id, title, state, created_by_account_id,
+                        RETURNING plan_id, group_id, title, state, current_request_id, created_by_account_id,
                                   version, created_at, updated_at
                         """)
                 .param("planId", planId)
@@ -75,11 +75,11 @@ public class PlanRepository {
         validateMustHaves(mustHaves);
         jdbcClient.sql("""
                         INSERT INTO planning_plan (
-                            plan_id, group_id, title, state, created_by_account_id,
+                            plan_id, group_id, title, state, current_request_id, created_by_account_id,
                             version, created_at, updated_at
                         )
                         VALUES (
-                            :planId, :groupId, :title, :state, :createdByAccountId,
+                            :planId, :groupId, :title, :state, :currentRequestId, :createdByAccountId,
                             :version, :createdAt, :updatedAt
                         )
                         """)
@@ -87,6 +87,7 @@ public class PlanRepository {
                 .param("groupId", plan.groupId())
                 .param("title", plan.title())
                 .param("state", plan.state().name())
+                .param("currentRequestId", plan.currentRequestId())
                 .param("createdByAccountId", plan.createdByAccountId())
                 .param("version", plan.version())
                 .param("createdAt", plan.createdAt())
@@ -100,7 +101,7 @@ public class PlanRepository {
     @Transactional(readOnly = true)
     public Optional<PrivatePlan> findPrivate(UUID planId, UUID groupId) {
         var plan = jdbcClient.sql("""
-                        SELECT p.plan_id, p.group_id, p.title, p.state, p.created_by_account_id,
+                        SELECT p.plan_id, p.group_id, p.title, p.state, p.current_request_id, p.created_by_account_id,
                                p.version, p.created_at, p.updated_at,
                                d.category, d.time_zone, d.area_code, d.radius_km,
                                d.minimum_headcount, d.maximum_headcount,
@@ -163,7 +164,7 @@ public class PlanRepository {
     @Transactional(propagation = Propagation.MANDATORY)
     public Plan lockPlan(UUID planId) {
         return jdbcClient.sql("""
-                        SELECT plan_id, group_id, title, state, created_by_account_id,
+                        SELECT plan_id, group_id, title, state, current_request_id, created_by_account_id,
                                version, created_at, updated_at
                         FROM planning_plan
                         WHERE plan_id = :planId
@@ -183,7 +184,7 @@ public class PlanRepository {
                             updated_at = statement_timestamp()
                         WHERE plan_id = :planId
                           AND version = :expectedVersion
-                        RETURNING plan_id, group_id, title, state, created_by_account_id,
+                        RETURNING plan_id, group_id, title, state, current_request_id, created_by_account_id,
                                   version, created_at, updated_at
                         """)
                 .param("planId", planId)
@@ -203,7 +204,7 @@ public class PlanRepository {
                         WHERE plan_id = :planId
                           AND version = :expectedVersion
                           AND state = 'COLLABORATING'
-                        RETURNING plan_id, group_id, title, state, created_by_account_id,
+                        RETURNING plan_id, group_id, title, state, current_request_id, created_by_account_id,
                                   version, created_at, updated_at
                         """)
                 .param("planId", planId)
@@ -259,7 +260,7 @@ public class PlanRepository {
     @Transactional(readOnly = true)
     public List<Plan> listPage(UUID groupId, int limit) {
         return jdbcClient.sql("""
-                        SELECT plan_id, group_id, title, state, created_by_account_id,
+                        SELECT plan_id, group_id, title, state, current_request_id, created_by_account_id,
                                version, created_at, updated_at
                         FROM planning_plan
                         WHERE group_id = :groupId
@@ -275,7 +276,7 @@ public class PlanRepository {
     @Transactional(readOnly = true)
     public List<Plan> listPage(UUID groupId, OffsetDateTime createdAt, UUID planId, int limit) {
         return jdbcClient.sql("""
-                        SELECT plan_id, group_id, title, state, created_by_account_id,
+                        SELECT plan_id, group_id, title, state, current_request_id, created_by_account_id,
                                version, created_at, updated_at
                         FROM planning_plan
                         WHERE group_id = :groupId
@@ -511,6 +512,7 @@ public class PlanRepository {
                 resultSet.getObject("group_id", UUID.class),
                 resultSet.getString("title"),
                 PlanState.valueOf(resultSet.getString("state")),
+                resultSet.getObject("current_request_id", UUID.class),
                 resultSet.getObject("created_by_account_id", UUID.class),
                 resultSet.getLong("version"),
                 resultSet.getObject("created_at", OffsetDateTime.class),

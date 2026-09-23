@@ -9,6 +9,7 @@ public record Plan(
         UUID groupId,
         String title,
         PlanState state,
+        UUID currentRequestId,
         UUID createdByAccountId,
         long version,
         OffsetDateTime createdAt,
@@ -27,5 +28,17 @@ public record Plan(
         }
         Objects.requireNonNull(createdAt, "createdAt must not be null");
         Objects.requireNonNull(updatedAt, "updatedAt must not be null");
+    }
+
+    public Plan(
+            UUID planId,
+            UUID groupId,
+            String title,
+            PlanState state,
+            UUID createdByAccountId,
+            long version,
+            OffsetDateTime createdAt,
+            OffsetDateTime updatedAt) {
+        this(planId, groupId, title, state, null, createdByAccountId, version, createdAt, updatedAt);
     }
 }
