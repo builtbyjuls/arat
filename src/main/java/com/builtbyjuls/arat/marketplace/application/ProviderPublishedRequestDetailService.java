@@ -27,13 +27,12 @@ public class ProviderPublishedRequestDetailService {
 
     @Transactional
     public PublishedRequestRepresentation find(UUID providerId, UUID requestId, UUID actorId) {
-        if (!providerEligibilityAccess.lockAndHasActiveStaffAccess(providerId, actorId)) {
-            throw notFound();
-        }
+        var eligibilityVersion = providerEligibilityAccess
+                .lockAndFindVerifiedEligibilityVersionForActiveStaff(providerId, actorId)
+                .orElseThrow(this::notFound);
         var recipient = recipientRepository.findActiveByRequestIdAndProviderId(requestId, providerId)
                 .orElseThrow(this::notFound);
-        if (!providerEligibilityAccess.lockAndHasCurrentVerifiedEligibility(
-                providerId, recipient.providerEligibilityVersion())) {
+        if (recipient.providerEligibilityVersion() != eligibilityVersion) {
             throw notFound();
         }
         var snapshot = planningRequestAccess.findProviderSafeSnapshot(requestId)

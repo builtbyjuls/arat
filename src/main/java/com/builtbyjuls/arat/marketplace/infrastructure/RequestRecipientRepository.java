@@ -72,6 +72,34 @@ public class RequestRecipientRepository {
     }
 
     @Transactional(readOnly = true)
+    public List<RequestRecipient> findActiveProviderFeedPage(
+            UUID providerId,
+            long eligibilityVersion,
+            OffsetDateTime beforeCreatedAt,
+            UUID beforeRequestId,
+            int limit) {
+        var cursorPredicate = beforeCreatedAt == null ? "" : """
+                          AND (created_at, published_request_id) < (:beforeCreatedAt, :beforeRequestId)
+                        """;
+        var query = jdbcClient.sql(selectRecipients() + """
+                        WHERE provider_id = :providerId
+                          AND provider_eligibility_version = :eligibilityVersion
+                          AND access_state = 'ACTIVE'
+                        """ + cursorPredicate + """
+                        ORDER BY created_at DESC, published_request_id DESC
+                        LIMIT :limit
+                        """)
+                .param("providerId", providerId)
+                .param("eligibilityVersion", eligibilityVersion)
+                .param("limit", limit);
+        if (beforeCreatedAt != null) {
+            query.param("beforeCreatedAt", beforeCreatedAt)
+                    .param("beforeRequestId", beforeRequestId);
+        }
+        return query.query(this::mapRecipient).list();
+    }
+
+    @Transactional(readOnly = true)
     public Optional<RequestRecipient> findActiveByRequestIdAndProviderId(UUID publishedRequestId, UUID providerId) {
         return jdbcClient.sql(selectRecipients() + """
                         WHERE published_request_id = :publishedRequestId

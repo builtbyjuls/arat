@@ -678,7 +678,8 @@ reopened, or replacement request publication, and group current/detail/history
 reads are implemented. Provider request detail is implemented with PostgreSQL
 endpoint and OpenAPI evidence in `ProviderPublishedRequestDetailIT`.
 `PublishedRequestQueryIT` provides PostgreSQL endpoint evidence for the group
-request reads. Provider feed and closure remain planned.
+request reads. `ProviderRequestFeedIT` provides PostgreSQL endpoint and OpenAPI
+evidence for the provider feed. Closure remains planned.
 Common malformed syntax and authentication outcomes
 remain 400 and 401. Required missing, malformed, and stale version preconditions
 return 428 `PRECONDITION_REQUIRED`, 400 `INVALID_PRECONDITION`, and 412

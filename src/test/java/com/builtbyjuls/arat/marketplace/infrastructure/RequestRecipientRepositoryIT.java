@@ -11,6 +11,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
@@ -158,6 +159,42 @@ class RequestRecipientRepositoryIT extends PostgreSqlIntegrationTest {
                 .contains("access_state")
                 .contains("'ACTIVE'");
         assertThat(requestLookupIndex).contains("published_request_id, created_at DESC, provider_id");
+    }
+
+    @Test
+    void providerFeedQueryUsesTheRecipientFeedIndex() {
+        var requestId = createRequest();
+        insertRow(requestId, PROVIDER_ID, 4, "MATCH_RULE", null, "ACTIVE");
+
+        List<List<String>> plans = transactionTemplate.execute(status -> {
+            jdbcClient.sql("SET LOCAL enable_seqscan = off").update();
+            var recipientPlan = jdbcClient.sql("""
+                            EXPLAIN (COSTS OFF)
+                            SELECT published_request_id
+                            FROM marketplace_request_recipient
+                            WHERE provider_id = :providerId
+                              AND provider_eligibility_version = 4
+                              AND access_state = 'ACTIVE'
+                            ORDER BY created_at DESC, published_request_id DESC
+                            LIMIT 2
+                            """)
+                    .param("providerId", PROVIDER_ID)
+                    .query(String.class)
+                    .list();
+            var requestPlan = jdbcClient.sql("""
+                            EXPLAIN (COSTS OFF)
+                            SELECT request_id
+                            FROM planning_published_request
+                            WHERE request_id = :requestId
+                            """)
+                    .param("requestId", requestId)
+                    .query(String.class)
+                    .list();
+            return List.of(recipientPlan, requestPlan);
+        });
+
+        assertThat(plans.getFirst()).anyMatch(line -> line.contains("marketplace_request_recipient_provider_feed_idx"));
+        assertThat(plans.get(1)).anyMatch(line -> line.contains("planning_published_request_pkey"));
     }
 
     @Test

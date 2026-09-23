@@ -5,6 +5,7 @@ import com.builtbyjuls.arat.providers.domain.ProviderStaffStatus;
 import com.builtbyjuls.arat.providers.domain.ProviderVerificationStatus;
 import com.builtbyjuls.arat.providers.infrastructure.ProviderRepository;
 import java.util.List;
+import java.util.OptionalLong;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
@@ -63,6 +64,23 @@ public class ProviderEligibilityAccess {
                         && organization.verificationStatus() == ProviderVerificationStatus.VERIFIED
                         && organization.eligibilityVersion() == requiredEligibilityVersion)
                 .orElse(false);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public OptionalLong lockAndFindVerifiedEligibilityVersionForActiveStaff(UUID providerId, UUID accountId) {
+        var organization = providerRepository.findAndLockOrganization(providerId);
+        var hasActiveStaff = providerRepository.findStaffMembership(providerId, accountId)
+                .map(membership -> membership.status() == ProviderStaffStatus.ACTIVE)
+                .orElse(false);
+        if (organization.isEmpty() || !hasActiveStaff) {
+            return OptionalLong.empty();
+        }
+        var value = organization.get();
+        if (value.status() != ProviderOrganizationStatus.ACTIVE
+                || value.verificationStatus() != ProviderVerificationStatus.VERIFIED) {
+            return OptionalLong.empty();
+        }
+        return OptionalLong.of(value.eligibilityVersion());
     }
 
     private int requireMaximumCandidateCount(int maximumCandidateCount) {
