@@ -9,8 +9,9 @@ milestone is called complete.
 Milestone and phase numbers refer to the same delivery sequence. This document
 uses `M0`, `M1`, and so on consistently.
 
-Current stage: M2 is complete. M3, offers, selection, and provider confirmation,
-is next.
+Current stage: M2 is complete. UI1, the mobile web demonstration client, is
+next. M3 remains planned after UI1, with its number and marketplace scope
+unchanged.
 
 ## Status vocabulary
 
@@ -31,7 +32,8 @@ documentation agree.
 flowchart LR
     M0[M0 Runtime foundation<br/>Complete] --> M1[M1 Private collaboration<br/>Complete]
     M1 --> M2[M2 Provider requests<br/>Complete]
-    M2 --> M3[M3 Offers and matches<br/>Next]
+    M2 --> UI1[UI1 Mobile web client<br/>Next]
+    UI1 --> M3[M3 Offers and matches<br/>Planned]
     M3 --> M4[M4 Reliable delivery<br/>Planned]
     M4 --> R[Release evidence and hardening<br/>Planned]
 
@@ -113,7 +115,33 @@ OpenAPI journey, focused rollback and separate-connection race suites, database
 immutability tests, and the normal `./mvnw clean verify` lane. M2 persists
 durable pending outbox rows but does not relay or deliver them.
 
-### M3: Offers, selection, and provider confirmation - Next
+### UI1: Mobile web client for M0-M2 - Next
+
+The [Mobile Web Client Contract](web-client.md) freezes the planned Angular
+client, routes, HTTP semantics, same-origin boundary, mobile rules, and local
+identity limitations. No client or supporting discovery read is implemented
+by this documentation decision.
+
+Outcome:
+
+- Privacy-scoped group, provider, and finalization discovery plus an exact
+  pending-verification operator queue support fresh-session and deep-link use.
+- Organizers and members can create groups and plans, share/accept invitations,
+  edit requirements/preferences, finalize, publish, inspect, close and cancel.
+- Provider staff can create and maintain their contexts, submit verification,
+  and inspect eligible request feeds; operators can accept/reject exact pending
+  submissions. Suspension and restoration remain API-only.
+- The local-only actor selector and same-origin runtime demonstrate M2 without
+  claiming production authentication or pulling offers and matches forward.
+
+Completion requires independent backend/frontend gates, generated OpenAPI
+contract checks, mobile Playwright and accessibility evidence at 320/360/390
+CSS pixels, a desktop smoke, reload and actor-isolation tests, production
+fake-token exclusion, and an isolated Compose smoke. Browser tests supplement
+PostgreSQL invariant evidence. UI1 is inserted between M2 and M3 without
+renumbering the existing milestones.
+
+### M3: Offers, selection, and provider confirmation - Planned
 
 Outcome:
 
@@ -145,9 +173,9 @@ outbox event must already commit atomically before this delivery layer runs.
 
 ## Release 1 gate
 
-Release 1 consists of M0 through M4 plus evidence and hardening for the
-implemented request-first journey. Before that label is used, the repository
-must also contain:
+Release 1 consists of M0 through M4, the intervening UI1 client, and evidence
+and hardening for the implemented request-first journey. Before that label is
+used, the repository must also contain:
 
 - a clean-checkout end-to-end demonstration;
 - synchronized OpenAPI, diagrams, ADRs, and known limitations;
@@ -179,6 +207,7 @@ a parallel workflow.
 - [Architecture](architecture.md)
 - [Domain and Data Model](domain-model.md)
 - [API Contract](api-contract.md)
+- [Mobile Web Client Contract](web-client.md)
 - [Consistency and Concurrency](consistency-and-concurrency.md)
 - [Testing Strategy](testing-strategy.md)
 - [Architecture Decision Records](adr/README.md)

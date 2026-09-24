@@ -16,10 +16,12 @@ collaboration, and versioned provider requests with recipient privacy. Offers,
 matches, and notification delivery remain planned, and the documents describe
 the evidence required before making performance or scalability claims.
 
-Current stage: M2 is complete. M3, offers, selection, and provider
-confirmation, is next. M2 finalizes organizer-selected terms, publishes
-immutable requests to fixed verified-provider audiences, authorizes reads, and
-captures durable notification intent in PostgreSQL. The outbox rows are durable,
+Current stage: M2 is complete. UI1, the planned mobile-first Angular web
+client for M0-M2, is next. M3 remains planned after UI1 and retains offers,
+votes, selection, provider confirmation, and matches. M2 finalizes
+organizer-selected terms, publishes immutable requests to fixed verified-provider
+audiences, authorizes reads, and captures durable notification intent in
+PostgreSQL. The outbox rows are durable,
 but relay and notification delivery are not implemented; those begin in M4.
 See the [Project Roadmap](docs/roadmap.md).
 
@@ -205,6 +207,7 @@ directly because its transaction and locking behavior is part of the product.
 - [Domain Model](docs/domain-model.md)
 - [Architecture](docs/architecture.md)
 - [API Contract](docs/api-contract.md)
+- [Mobile Web Client Contract](docs/web-client.md)
 - [Consistency and Concurrency](docs/consistency-and-concurrency.md)
 - [Testing Strategy](docs/testing-strategy.md)
 - [Architecture Decision Records](docs/adr/README.md)
@@ -219,6 +222,7 @@ directly because its transaction and locking behavior is part of the product.
 | Database schema and migrations | Implemented: Flyway baseline and PostgreSQL test foundation |
 | Planning workflow | Implemented: private groups, invitations, collaborative plans, requirement replacement, member preferences, and cancellation |
 | Marketplace workflows | Implemented through M2 provider request publication, versioning, recipient privacy, closure, and cancellation |
+| Mobile web client | UI1 planned next: Angular demonstration client; discovery reads and screens not implemented |
 | Billing simulation | Not started |
 | Concurrency evidence | Implemented for M1 collaboration and M2 publication, replacement, closure, cancellation, and eligibility fencing |
 | Performance measurements | Not started |

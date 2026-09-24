@@ -6,7 +6,9 @@ This document describes the intended architecture. It is not evidence that every
 
 M2 is implemented: provider identity and eligibility, immutable finalization
 and request publication, fixed recipients, authorized reads, and PostgreSQL
-outbox capture. M3 adds offers, votes, selection, confirmation, and matches.
+outbox capture. UI1 next adds a planned mobile-first Angular demonstration
+client and privacy-scoped discovery reads for M0-M2. M3 remains planned after
+UI1 and adds offers, votes, selection, confirmation, and matches.
 M4 adds relay, AWS SDK/SQS/Floci, inbox, SMTP, email rendering, delivery retries,
 and DLQ behavior. Listings, direct invitations, billing, advanced trust tooling,
 geospatial search, and cloud deployment are deferred. The delivery components
@@ -108,6 +110,22 @@ An interface is introduced only at a real boundary, such as time, identity, queu
 - PostgreSQL behavior is tested with Testcontainers. H2 is not used as a substitute.
 
 See [ADR-0002](adr/0002-postgresql-coordination.md).
+
+### 4.3 Planned Angular companion client (UI1)
+
+The [Mobile Web Client Contract](web-client.md) freezes Angular 22, Node 24
+LTS, npm, standalone components, strict TypeScript, reactive forms, signals
+and services, generated OpenAPI types with explicit HTTP adapters, Vitest,
+Playwright, and project-owned SCSS. The independent `ui/` workspace does not
+couple Maven and frontend verification. It adds no business-state authority.
+
+Use an Angular development proxy and a same-origin static web container that
+proxies `/api` and `/v3` to Spring, preserving response headers and API errors.
+The backend remains one modular monolith and PostgreSQL database. No broad
+CORS, SSR, PWA, WebSockets, NgRx, or component library is justified. The normal
+production build excludes fake identity; local Compose explicitly selects a
+local-demo build. Production authentication remains absent and fails closed.
+These are accepted decisions for planned work, not implemented deployment.
 
 ## 5. Modules and ownership
 

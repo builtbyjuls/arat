@@ -719,6 +719,34 @@ M3 also requires command keys for offer submission and withdrawal, selection,
 and match confirmation, decline, completion, and cancellation. Simulated
 subscription commands use keys when that deferred extension exists.
 
+## UI1 discovery additions (planned)
+
+The [Mobile Web Client Contract](web-client.md#required-discovery-reads-planned)
+defines the three reload-safe read gaps and the operator queue to implement
+before client screens. None is implemented at the M2 baseline:
+
+- `GET /api/v1/groups`: current actor's active groups and scoped role.
+- `GET /api/v1/providers`: active staff contexts, profile summary and staff role;
+  add `callerStaffRole` to staff-private provider detail for direct reloads.
+- `GET /api/v1/plans/{planId}/requirement-finalizations`: immutable history and
+  basis status for active group members, without private preference bodies.
+- `GET /api/v1/operations/providers/pending-verifications`: operator-only exact
+  current submissions with bounded provider summary and evidence references.
+
+Use bounded opaque cursor pages (default 20, maximum 100), stable creation or
+submission time plus ID ordering, and authorization before pagination as
+specified in the client contract. Existing private-resource errors and operator
+role failures remain authoritative. These reads change no M0-M2 transition,
+publication eligibility, or exact-submission decision fence. Executable OpenAPI
+and PostgreSQL evidence must accompany their later implementation.
+
+Browser routing is separate from HTTP resource paths: `/plans/:planId` is the
+canonical private plan workspace, and `/invitations/accept` accepts a pasted
+token without putting it in navigation history. The existing token-path POST
+API is unchanged. The client preserves ETag, Location, idempotency, Problem
+Details, and correlation headers through explicit adapters; see the
+[client HTTP contract](web-client.md#http-and-command-state).
+
 ## Listing APIs (listing extension)
 
 ### Create and manage listings
