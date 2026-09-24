@@ -9,10 +9,12 @@ messaging, billing, and load work. M1 group and planning correctness already
 have executable PostgreSQL evidence in `CollaborationRaceOutcomesIT`, while the
 HTTP journey and OpenAPI contract are covered by `MilestoneOneJourneyIT`.
 M2 now has focused PostgreSQL suites plus `MilestoneTwoJourneyIT` for the full
-HTTP and executable OpenAPI journey. UI1 next adds the planned mobile web
-client gates below; no browser evidence is claimed yet. M3 adds offers, votes,
-selection, confirmation, and matches. M4 adds relay, AWS SDK, SQS/Floci, inbox,
-SMTP, email rendering, delivery retries, and DLQ tests. No M2 test needs those M4
+HTTP and executable OpenAPI journey. UI1 discovery reads have focused
+PostgreSQL suites plus `UiDiscoveryContractsIT` for their combined HTTP privacy
+and executable OpenAPI boundary. The planned mobile web client gates remain
+below; no browser evidence is claimed yet. M3 adds offers, votes, selection,
+confirmation, and matches. M4 adds relay, AWS SDK, SQS/Floci, inbox, SMTP,
+email rendering, delivery retries, and DLQ tests. No M2 test needs those M4
 components.
 
 ## Quality goals
