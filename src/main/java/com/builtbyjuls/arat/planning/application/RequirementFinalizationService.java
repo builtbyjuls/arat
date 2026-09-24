@@ -120,7 +120,7 @@ public class RequirementFinalizationService {
         auditEventWriter.append(new AuditEvent(
                 UUID.randomUUID(), command.actorId(), "plan.requirements.finalized", "requirement_finalization",
                 finalization.finalizationId(), groupId, command.planId(), command.correlationId(), AuditMetadata.empty()));
-        var representation = RequirementFinalizationRepresentation.from(finalization, objectMapper);
+        var representation = RequirementFinalizationRepresentation.from(finalization, objectMapper, true);
         idempotencyRepository.complete(scope, new CompletedIdempotencyResponse(
                 201,
                 ReplayState.from(objectMapper.valueToTree(Map.of("finalizationId", finalization.finalizationId())), objectMapper),
@@ -135,7 +135,7 @@ public class RequirementFinalizationService {
         var finalizationId = response.resourceIdOptional().orElseGet(() -> replayFinalizationId(response));
         var finalization = finalizationRepository.findById(finalizationId)
                 .orElseThrow(() -> new IllegalStateException("completed finalization replay resource is missing"));
-        return RequirementFinalizationRepresentation.from(finalization, objectMapper);
+        return RequirementFinalizationRepresentation.from(finalization, objectMapper, true);
     }
 
     private UUID replayFinalizationId(CompletedIdempotencyResponse response) {

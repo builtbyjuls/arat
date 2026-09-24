@@ -10,7 +10,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-@RestControllerAdvice(assignableTypes = {PlanQueryController.class, PublishedRequestQueryController.class})
+@RestControllerAdvice(assignableTypes = {
+        PlanQueryController.class,
+        PublishedRequestQueryController.class,
+        RequirementFinalizationController.class})
 class PlanQueryProblemAdvice {
 
     private final ApiProblemFactory problemFactory;

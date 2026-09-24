@@ -583,6 +583,26 @@ Preferences are advisory; finalization never silently changes organizer
 headcount, budget, schedule, or other terms. A later requirement replacement
 advances plan version and makes the finalization stale.
 
+### Read requirement finalization history
+
+~~~http
+GET /api/v1/plans/{planId}/requirement-finalizations?cursor=...&limit=...
+~~~
+
+Active group members may read the named plan's immutable finalizations. Missing
+plans, inactive membership, and unrelated access return `404
+PRIVATE_RESOURCE_NOT_FOUND` before cursor validation or pagination. The
+response is `{items, nextCursor}` with the existing finalization representation
+and `currentBasis`; it is true only when that finalization's basis plan version
+matches the plan version observed for the read. Publication still validates the
+basis under its lock.
+
+Rows order by `(created_at DESC, finalization_id DESC)`. Cursors are opaque,
+versioned, and bound to the current actor and plan. The default limit is 20,
+the maximum is 100, and malformed, unsupported, actor-mismatched, or
+plan-mismatched cursors and invalid limits return `400 INVALID_CURSOR`. The
+response excludes preference bodies, recipients, audit, and outbox data.
+
 ### Edit while a request is open
 
 M2 allows requirement and preference writes in both `COLLABORATING` and
@@ -752,25 +772,23 @@ M3 also requires command keys for offer submission and withdrawal, selection,
 and match confirmation, decline, completion, and cancellation. Simulated
 subscription commands use keys when that deferred extension exists.
 
-## UI1 discovery additions (planned)
+## UI1 discovery additions
 
 The [Mobile Web Client Contract](web-client.md#required-discovery-reads-planned)
-defines the reload-safe read gaps and the operator queue. `GET /api/v1/groups`
-and `GET /api/v1/providers` are implemented; the remaining reads are planned
-before client screens depend on them:
+defines the reload-safe read gaps and the operator queue. `GET /api/v1/groups`,
+`GET /api/v1/providers`, and finalization history are implemented; the operator
+queue remains planned before its client screen depends on it:
 
-- `GET /api/v1/plans/{planId}/requirement-finalizations`: immutable history and
-  basis status for active group members, without private preference bodies.
 - `GET /api/v1/operations/providers/pending-verifications`: operator-only exact
   current submissions with bounded provider summary and evidence references.
 
-The planned reads use bounded opaque cursor pages (default 20, maximum 100),
+The discovery reads use bounded opaque cursor pages (default 20, maximum 100),
 stable creation or submission time plus ID ordering, and authorization before
 pagination as specified in the client contract. Existing private-resource
 errors and operator role failures remain authoritative. These reads change no
 M0-M2 transition, publication eligibility, or exact-submission decision fence.
-Executable OpenAPI and PostgreSQL evidence must accompany their later
-implementation.
+Executable OpenAPI and PostgreSQL evidence accompany implemented reads and are
+required for later implementation.
 
 Browser routing is separate from HTTP resource paths: `/plans/:planId` is the
 canonical private plan workspace, and `/invitations/accept` accepts a pasted

@@ -87,6 +87,36 @@ public class RequirementFinalizationRepository {
                 .optional();
     }
 
+    @Transactional(readOnly = true)
+    public List<RequirementFinalization> listPage(UUID planId, int limit) {
+        return jdbcClient.sql(selectFinalization() + """
+                        WHERE plan_id = :planId
+                        ORDER BY created_at DESC, finalization_id DESC
+                        LIMIT :limit
+                        """)
+                .param("planId", planId)
+                .param("limit", limit)
+                .query(this::mapFinalization)
+                .list();
+    }
+
+    @Transactional(readOnly = true)
+    public List<RequirementFinalization> listPage(
+            UUID planId, OffsetDateTime createdAt, UUID finalizationId, int limit) {
+        return jdbcClient.sql(selectFinalization() + """
+                        WHERE plan_id = :planId
+                          AND (created_at, finalization_id) < (:createdAt, :finalizationId)
+                        ORDER BY created_at DESC, finalization_id DESC
+                        LIMIT :limit
+                        """)
+                .param("planId", planId)
+                .param("createdAt", createdAt)
+                .param("finalizationId", finalizationId)
+                .param("limit", limit)
+                .query(this::mapFinalization)
+                .list();
+    }
+
     @Transactional(propagation = Propagation.MANDATORY)
     public OffsetDateTime databaseDecisionTime() {
         return jdbcClient.sql("SELECT clock_timestamp()")

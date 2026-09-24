@@ -175,15 +175,15 @@ provider staff or private group membership.
 
 ## Required discovery reads (planned)
 
-The remaining two reload-safe gaps and the operator queue must be implemented
-before screens depend on them. They do not exist at the M2 baseline. They belong to
-the existing owning modules and must not query foreign module tables directly.
+The remaining reload-safe gap and operator queue must be implemented before
+their screens depend on them. They belong to the existing owning modules and
+must not query foreign module tables directly.
 
 | Read | Required projection and privacy |
 | --- | --- |
 | `GET /api/v1/groups` | Implemented: compact groups and caller's scoped role for ACTIVE membership only; no public search, inactive history, plan data, or foreign actor filter |
 | `GET /api/v1/providers` | Implemented: provider ID, display name, verification status, version, caller staff role, categories and service areas for active staff only; staff-private provider detail also exposes `callerStaffRole` for direct reloads |
-| `GET /api/v1/plans/{planId}/requirement-finalizations` | Existing immutable finalization representation, basis version and enough status to distinguish current-basis candidates from history; active group members only, same private 404 as plan reads |
+| `GET /api/v1/plans/{planId}/requirement-finalizations` | Implemented: existing immutable finalization representation plus `currentBasis`; active group members only, same private 404 as plan reads; no preference bodies, recipients, audit, or outbox data |
 | `GET /api/v1/operations/providers/pending-verifications` | PLATFORM_OPERATOR only; exact current submission ID, provider ID/version, bounded safe provider summary, submission time and ordered evidence references; exclude superseded/decided submissions |
 
 Use `{items, nextCursor}`, default limit 20 and maximum 100, and stable opaque

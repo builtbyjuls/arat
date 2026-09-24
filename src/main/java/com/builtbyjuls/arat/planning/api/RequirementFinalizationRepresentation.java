@@ -17,17 +17,18 @@ public record RequirementFinalizationRepresentation(
         String category, String timeZone, RequirementRepresentation.AreaRepresentation area,
         RequirementRepresentation.HeadcountRepresentation headcount, RequirementRepresentation.BudgetRepresentation budget,
         List<String> mustHaves, String providerSafeNotes, Map<String, Object> categoryAttributes,
-        int currentPreferenceCount, int stalePreferenceCount, List<String> warnings) {
+        int currentPreferenceCount, int stalePreferenceCount, List<String> warnings, boolean currentBasis) {
     public RequirementFinalizationRepresentation {
         mustHaves = List.copyOf(mustHaves);
         categoryAttributes = Map.copyOf(categoryAttributes);
         warnings = List.copyOf(warnings);
     }
-    public static RequirementFinalizationRepresentation from(RequirementFinalization value, ObjectMapper objectMapper) {
+    public static RequirementFinalizationRepresentation from(
+            RequirementFinalization value, ObjectMapper objectMapper, boolean currentBasis) {
         try {
             Map<String, Object> attributes = objectMapper.readValue(value.categoryAttributes(), new TypeReference<>() {});
             var budget = value.budgetMinimumMinorUnits() == null ? null : new RequirementRepresentation.BudgetRepresentation("PHP", amount(value.budgetMinimumMinorUnits()), amount(value.budgetMaximumMinorUnits()));
-            return new RequirementFinalizationRepresentation(value.finalizationId(), value.basisPlanVersion(), value.selectedCandidateWindowId(), value.selectedStartsAt(), value.selectedEndsAt(), value.offerDeadline(), value.category().name(), value.timeZone(), new RequirementRepresentation.AreaRepresentation(value.areaCode(), value.radiusKm()), new RequirementRepresentation.HeadcountRepresentation(value.minimumHeadcount(), value.maximumHeadcount()), budget, value.mustHaves(), value.providerSafeNotes(), attributes, value.currentPreferenceCount(), value.stalePreferenceCount(), value.warnings().stream().map(Enum::name).toList());
+            return new RequirementFinalizationRepresentation(value.finalizationId(), value.basisPlanVersion(), value.selectedCandidateWindowId(), value.selectedStartsAt(), value.selectedEndsAt(), value.offerDeadline(), value.category().name(), value.timeZone(), new RequirementRepresentation.AreaRepresentation(value.areaCode(), value.radiusKm()), new RequirementRepresentation.HeadcountRepresentation(value.minimumHeadcount(), value.maximumHeadcount()), budget, value.mustHaves(), value.providerSafeNotes(), attributes, value.currentPreferenceCount(), value.stalePreferenceCount(), value.warnings().stream().map(Enum::name).toList(), currentBasis);
         } catch (tools.jackson.core.JacksonException exception) {
             throw new IllegalStateException("stored finalization attributes are invalid", exception);
         }

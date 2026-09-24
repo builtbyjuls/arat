@@ -161,6 +161,14 @@ public class PlanRepository {
                 .optional();
     }
 
+    @Transactional(readOnly = true)
+    public Optional<Long> findVersion(UUID planId) {
+        return jdbcClient.sql("SELECT version FROM planning_plan WHERE plan_id = :planId")
+                .param("planId", planId)
+                .query(Long.class)
+                .optional();
+    }
+
     @Transactional(propagation = Propagation.MANDATORY)
     public Plan lockPlan(UUID planId) {
         return jdbcClient.sql("""
