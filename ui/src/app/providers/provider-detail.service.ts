@@ -2,7 +2,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { ApiHttpError } from '../api/api-http-client';
 import { ActorScopeResetService } from '../identity/actor-scope-reset.service';
-import { ProviderApi, ProviderDetail } from './provider-api.service';
+import { ProviderApi, ProviderDetail, ProviderRepresentation } from './provider-api.service';
 
 export type ProviderDetailState = 'error' | 'loading' | 'not-found' | 'ready';
 
@@ -49,6 +49,25 @@ export class ProviderDetailService {
       this.#correlationId.set(apiError?.correlationId ?? null);
       this.#state.set(apiError?.status === 404 ? 'not-found' : 'error');
     }
+  }
+
+  applyProfile(provider: ProviderRepresentation, etag: string): void {
+    const current = this.#provider();
+    if (current === null || current.providerId !== provider.providerId || etag.length === 0) {
+      return;
+    }
+    this.#requestId += 1;
+    this.#provider.set({ ...provider, callerStaffRole: current.callerStaffRole });
+    this.#etag.set(etag);
+    this.#state.set('ready');
+  }
+
+  markUnavailable(): void {
+    this.#requestId += 1;
+    this.#provider.set(null);
+    this.#etag.set(null);
+    this.#correlationId.set(null);
+    this.#state.set('not-found');
   }
 
   private reset(): void { this.#requestId += 1; this.clearResource(null); }

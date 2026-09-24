@@ -34,4 +34,23 @@ describe('ProviderApi', () => {
     expect(executeIdempotent).toHaveBeenCalledWith(intent);
     expect(read).toHaveBeenCalledWith('/providers/provider%2Fid');
   });
+
+  it('replaces the provider profile with its exact loaded ETag', () => {
+    const mutate = vi.fn(() => of({ body: null }));
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ providers: [{ provide: ApiHttpClient, useValue: { mutate } }] });
+
+    TestBed.inject(ProviderApi).replaceProfile('provider/id', {
+      displayName: 'Updated Courts',
+      supportedCategories: ['KTV'],
+      serviceAreaCodes: ['BGC', 'MAKATI'],
+    }, '"7"').subscribe();
+
+    expect(mutate).toHaveBeenCalledWith({
+      method: 'PUT',
+      path: '/providers/provider%2Fid/profile',
+      body: { displayName: 'Updated Courts', supportedCategories: ['KTV'], serviceAreaCodes: ['BGC', 'MAKATI'] },
+      precondition: { header: 'If-Match', value: '"7"' },
+    });
+  });
 });

@@ -19,7 +19,7 @@
         <h1 id="provider-heading" data-route-heading tabindex="-1">{{ provider.displayName }}</h1>
         <p class="role-label">Your staff role: {{ roleLabel(provider.callerStaffRole) }}</p>
       </div>
-      <button type="button" (click)="reload()">Reload provider organization</button>
+      <button type="button" (click)="reload()" [disabled]="profileEdit.state() === 'submitting'">Reload provider organization</button>
     </div>
     <section class="provider-profile" aria-labelledby="provider-profile-heading">
       <h2 id="provider-profile-heading">Provider profile</h2>
@@ -31,6 +31,52 @@
       </dl>
       <p>Verification is an operator review. It is not a guarantee of safety, licensing, service quality, inventory, or availability.</p>
     </section>
+    @if (provider.callerStaffRole === 'ADMIN') {
+      <section class="provider-profile profile-edit" aria-labelledby="provider-profile-edit-heading">
+        <h2 id="provider-profile-edit-heading">Edit provider profile</h2>
+        <p>Changes replace the profile for future matching. They do not claim verification or marketplace eligibility.</p>
+        <form [formGroup]="profileForm" (ngSubmit)="submitProfile()" novalidate>
+          <div class="field">
+            <label for="provider-display-name">Display name</label>
+            <input id="provider-display-name" type="text" formControlName="displayName" maxlength="120" [attr.aria-describedby]="profileForm.controls.displayName.touched && profileForm.controls.displayName.invalid || profileEdit.violationFor('displayName') ? 'provider-display-name-help provider-display-name-error' : 'provider-display-name-help'">
+            <p id="provider-display-name-help">Use 1 to 120 characters.</p>
+            @if (profileForm.controls.displayName.touched && profileForm.controls.displayName.invalid) { <p id="provider-display-name-error" class="field-error">Enter a display name of at most 120 characters.</p> }
+            @else if (profileEdit.violationFor('displayName'); as violation) { <p id="provider-display-name-error" class="field-error">{{ violation }}</p> }
+          </div>
+          <fieldset class="field" [attr.aria-describedby]="profileForm.controls.supportedCategories.touched && profileForm.controls.supportedCategories.invalid || profileEdit.violationFor('supportedCategories') ? 'provider-categories-error' : null">
+            <legend>Supported categories</legend>
+            @for (category of ['COURT', 'KTV', 'GROUP_DINING']; track category) {
+              <label class="checkbox"><input type="checkbox" [checked]="isCategorySelected(category)" (change)="toggleCategory(category, $any($event.target).checked)"> {{ category }}</label>
+            }
+            @if (profileForm.controls.supportedCategories.touched && profileForm.controls.supportedCategories.invalid) { <p id="provider-categories-error" class="field-error">Select at least one category.</p> }
+            @else if (profileEdit.violationFor('supportedCategories'); as violation) { <p id="provider-categories-error" class="field-error">{{ violation }}</p> }
+          </fieldset>
+          <div class="field">
+            <label for="provider-service-areas">Service area codes</label>
+            <textarea id="provider-service-areas" formControlName="serviceAreaCodes" maxlength="1299" aria-describedby="provider-service-areas-help provider-service-areas-error"></textarea>
+            <p id="provider-service-areas-help">Enter one unique area code per line. Use 1 to 64 characters each, up to 20 codes.</p>
+            @if (profileForm.controls.serviceAreaCodes.touched && profileForm.controls.serviceAreaCodes.invalid) { <p id="provider-service-areas-error" class="field-error">Enter one to 20 unique area codes, each at most 64 characters.</p> }
+            @else if (profileEdit.violationFor('serviceAreaCodes'); as violation) { <p id="provider-service-areas-error" class="field-error">{{ violation }}</p> }
+          </div>
+          <button type="submit" [disabled]="profileEdit.state() === 'submitting' || profileEdit.state() === 'conflict' || profileEdit.state() === 'reapply-ready'">{{ profileEdit.state() === 'submitting' ? 'Saving provider profile...' : 'Save provider profile' }}</button>
+        </form>
+        @if (profileEdit.state() === 'network-error') {
+          <section class="command-state" aria-live="assertive" role="alert"><p>Provider profile could not reach the server. Retry to send the same replacement.</p>@if (profileEdit.correlationId()) { <p>Correlation ID: {{ profileEdit.correlationId() }}</p> }<button type="button" (click)="retryProfile()">Retry profile save</button><button type="button" (click)="dismissProfileError()">Continue editing</button></section>
+        } @else if (profileEdit.state() === 'conflict') {
+          <section class="command-state" aria-live="assertive" role="alert"><p>The provider profile changed before your replacement was saved. Your edits are still in this form.</p><button type="button" (click)="refreshAfterConflict()">Refresh current profile</button></section>
+        } @else if (profileEdit.state() === 'reapply-ready') {
+          <section class="command-state" aria-live="assertive" role="alert"><p>The current profile is loaded. Review your retained edits, then deliberately reapply them.</p><button type="button" (click)="reapplyProfile()">Reapply profile changes</button><button type="button" (click)="keepCurrentProfile()">Keep current profile</button></section>
+        } @else if (profileEdit.state() === 'error') {
+          <section class="command-state" aria-live="assertive" role="alert">
+            @if (profileEdit.problemCode() === 'FORBIDDEN_ROLE') { <p>Only an active provider administrator can replace this profile.</p> }
+            @else if (profileEdit.problemCode() === 'VALIDATION_FAILED') { <p>Provider profile needs the highlighted corrections.</p> }
+            @else { <p>Provider profile could not be saved. Check the form and try again.</p> }
+            @if (profileEdit.correlationId()) { <p>Correlation ID: {{ profileEdit.correlationId() }}</p> }
+            <button type="button" (click)="dismissProfileError()">Dismiss</button>
+          </section>
+        }
+      </section>
+    }
     <a class="back-link" routerLink="/providers">Return to your provider workspaces</a>
   }
 </section>

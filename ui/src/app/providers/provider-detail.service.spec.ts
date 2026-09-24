@@ -33,6 +33,43 @@ describe('ProviderDetailService', () => {
     await loading;
     expect(service.provider()).toBeNull();
   });
+
+  it('updates the loaded detail only from a successful profile response', async () => {
+    const service = setup({ read: vi.fn(() => of(detailResult())) });
+    await service.load('provider-1');
+
+    service.applyProfile({
+      providerId: 'provider-1',
+      displayName: 'Updated Courts',
+      supportedCategories: ['KTV'],
+      serviceAreaCodes: ['MAKATI'],
+      verificationStatus: 'UNVERIFIED',
+      version: 3,
+    }, '"3"');
+
+    expect(service.provider()).toMatchObject({
+      callerStaffRole: 'ADMIN', displayName: 'Updated Courts', supportedCategories: ['KTV'], serviceAreaCodes: ['MAKATI'], version: 3,
+    });
+    expect(service.etag()).toBe('"3"');
+  });
+
+  it('does not let an older pending read overwrite a successful profile replacement', async () => {
+    const pending = new Subject<ApiHttpResult<ProviderDetail>>();
+    const api = { read: vi.fn().mockReturnValueOnce(of(detailResult())).mockReturnValueOnce(pending) };
+    const service = setup(api);
+    await service.load('provider-1');
+    const reload = service.load('provider-1');
+
+    service.applyProfile({
+      providerId: 'provider-1', displayName: 'Updated Courts', supportedCategories: ['KTV'], serviceAreaCodes: ['MAKATI'], verificationStatus: 'UNVERIFIED', version: 3,
+    }, '"3"');
+    pending.next(detailResult());
+    pending.complete();
+    await reload;
+
+    expect(service.provider()).toMatchObject({ displayName: 'Updated Courts', version: 3 });
+    expect(service.etag()).toBe('"3"');
+  });
 });
 
 function setup(api: Pick<ProviderApi, 'read'>): ProviderDetailService {

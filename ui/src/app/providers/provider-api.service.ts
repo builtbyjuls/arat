@@ -2,7 +2,7 @@ import { HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { components } from '../api/generated/arat-api';
-import { ApiHttpClient, ApiHttpResult, IdempotentMutationIntent } from '../api/api-http-client';
+import { ApiHttpClient, ApiHttpResult, IdempotentMutationIntent, ifMatch } from '../api/api-http-client';
 
 export type ProviderPage = components['schemas']['ProviderPageRepresentation'];
 export type CreateProviderRequest = components['schemas']['CreateProviderRequest'];
@@ -34,5 +34,18 @@ export class ProviderApi {
 
   read(providerId: string): Observable<ApiHttpResult<ProviderDetail>> {
     return this.#api.read<ProviderDetail>(`/providers/${encodeURIComponent(providerId)}`);
+  }
+
+  replaceProfile(
+    providerId: string,
+    request: CreateProviderRequest,
+    etag: string,
+  ): Observable<ApiHttpResult<ProviderRepresentation>> {
+    return this.#api.mutate({
+      method: 'PUT',
+      path: `/providers/${encodeURIComponent(providerId)}/profile`,
+      body: request,
+      precondition: ifMatch(etag),
+    });
   }
 }
