@@ -178,6 +178,23 @@ export class PlanApi {
     return this.#api.executeIdempotent<PublishedRequest, undefined>(intent);
   }
 
+  createPlanCancellationIntent(
+    planId: string,
+    etag: string,
+  ): IdempotentMutationIntent<undefined> {
+    return this.#api.beginIdempotentMutation({
+      method: 'POST',
+      path: `/plans/${encodeURIComponent(planId)}/cancellation`,
+      precondition: ifMatch(etag),
+    });
+  }
+
+  cancelPlan(
+    intent: IdempotentMutationIntent<undefined>,
+  ): Observable<ApiHttpResult<PlanRepresentation>> {
+    return this.#api.executeIdempotent<PlanRepresentation, undefined>(intent);
+  }
+
   createIntent(
     groupId: string,
     request: CreatePlanRequest,

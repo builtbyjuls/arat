@@ -167,4 +167,25 @@ describe('PlanApi', () => {
     });
     expect(executeIdempotent).toHaveBeenCalledWith(intent);
   });
+
+  it('creates one versioned plan-cancellation intent and executes it', () => {
+    const intent = { idempotencyKey: 'key-1' } as IdempotentMutationIntent<undefined>;
+    const beginIdempotentMutation = vi.fn(() => intent);
+    const executeIdempotent = vi.fn(() => of({ body: null }));
+    TestBed.configureTestingModule({
+      providers: [{ provide: ApiHttpClient, useValue: { beginIdempotentMutation, executeIdempotent } }],
+    });
+    const api = TestBed.inject(PlanApi);
+
+    const createdIntent = api.createPlanCancellationIntent('plan id', '"7"');
+    api.cancelPlan(createdIntent).subscribe();
+
+    expect(createdIntent).toBe(intent);
+    expect(beginIdempotentMutation).toHaveBeenCalledWith({
+      method: 'POST',
+      path: '/plans/plan%20id/cancellation',
+      precondition: { header: 'If-Match', value: '"7"' },
+    });
+    expect(executeIdempotent).toHaveBeenCalledWith(intent);
+  });
 });

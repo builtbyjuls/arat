@@ -1,27 +1,58 @@
 <section aria-labelledby="plan-heading">
   @if (planDetail.state() === 'loading') {
-    <h1 id="plan-heading" data-route-heading tabindex="-1">Loading plan...</h1>
-    <p class="status" role="status">Loading this private plan...</p>
+    @if (cancellations.result() && cancellationRefreshState() === 'loading') {
+      <h1 id="plan-heading" data-route-heading tabindex="-1">Refreshing cancelled plan state...</h1>
+      <section class="state" aria-live="polite" role="status">
+        <h2 data-cancellation-outcome-focus tabindex="-1">Cancellation accepted; refreshing current state...</h2>
+        <p>The command response was valid. Waiting for fresh plan, current request, and request history reads before showing their state.</p>
+      </section>
+    } @else {
+      <h1 id="plan-heading" data-route-heading tabindex="-1">Loading plan...</h1>
+      <p class="status" role="status">Loading this private plan...</p>
+    }
   } @else if (planDetail.state() === 'not-found') {
-    <h1 id="plan-heading" data-route-heading tabindex="-1">Plan unavailable</h1>
-    <section class="state" aria-live="assertive" role="alert">
-      <p>This plan is unavailable.</p>
-      <a routerLink="/groups">Return to your groups</a>
-    </section>
+    @if (cancellations.result() && cancellationRefreshState() === 'error') {
+      <h1 id="plan-heading" data-route-heading tabindex="-1">Cancelled plan state unavailable</h1>
+      <section class="state" aria-live="assertive" role="alert">
+        <h2 data-cancellation-outcome-focus tabindex="-1">Cancellation accepted; current state unavailable</h2>
+        <p>The cancellation command succeeded, but the plan, current request, and request history could not all be confirmed by fresh reads.</p>
+        <p>Retry these reads before relying on displayed plan or request state. This does not resubmit cancellation.</p>
+        <button type="button" (click)="retryCancellationRefresh()">Retry current state reads</button>
+        <a routerLink="/groups">Return to your groups</a>
+      </section>
+    } @else {
+      <h1 id="plan-heading" data-route-heading tabindex="-1">Plan unavailable</h1>
+      <section class="state" aria-live="assertive" role="alert">
+        <p>This plan is unavailable.</p>
+        <a routerLink="/groups">Return to your groups</a>
+      </section>
+    }
   } @else if (planDetail.state() === 'error') {
-    <h1 id="plan-heading" data-route-heading tabindex="-1">Plan unavailable</h1>
-    <section class="state" aria-live="assertive" role="alert">
-      @if (requirementEdit.state() === 'conflict') {
-        <p>The current plan version could not be loaded. Your unsaved requirement fields are still preserved.</p>
+    @if (cancellations.result() && cancellationRefreshState() === 'error') {
+      <h1 id="plan-heading" data-route-heading tabindex="-1">Cancelled plan state unavailable</h1>
+      <section class="state" aria-live="assertive" role="alert">
+        <h2 data-cancellation-outcome-focus tabindex="-1">Cancellation accepted; current state unavailable</h2>
+        <p>The cancellation command succeeded, but the plan, current request, and request history could not all be confirmed by fresh reads.</p>
+        <p>Retry these reads before relying on displayed plan or request state. This does not resubmit cancellation.</p>
         @if (planDetail.correlationId()) { <p>Correlation ID: {{ planDetail.correlationId() }}</p> }
-        <button type="button" (click)="refreshAfterConflict()">Retry current plan refresh</button>
-      } @else {
-        <p>This plan could not be loaded. Try again.</p>
-        @if (planDetail.correlationId()) { <p>Correlation ID: {{ planDetail.correlationId() }}</p> }
-        <button type="button" (click)="refresh()">Reload plan</button>
-      }
-      <a routerLink="/groups">Return to your groups</a>
-    </section>
+        <button type="button" (click)="retryCancellationRefresh()">Retry current state reads</button>
+        <a routerLink="/groups">Return to your groups</a>
+      </section>
+    } @else {
+      <h1 id="plan-heading" data-route-heading tabindex="-1">Plan unavailable</h1>
+      <section class="state" aria-live="assertive" role="alert">
+        @if (requirementEdit.state() === 'conflict') {
+          <p>The current plan version could not be loaded. Your unsaved requirement fields are still preserved.</p>
+          @if (planDetail.correlationId()) { <p>Correlation ID: {{ planDetail.correlationId() }}</p> }
+          <button type="button" (click)="refreshAfterConflict()">Retry current plan refresh</button>
+        } @else {
+          <p>This plan could not be loaded. Try again.</p>
+          @if (planDetail.correlationId()) { <p>Correlation ID: {{ planDetail.correlationId() }}</p> }
+          <button type="button" (click)="refresh()">Reload plan</button>
+        }
+        <a routerLink="/groups">Return to your groups</a>
+      </section>
+    }
   } @else if (planDetail.plan(); as plan) {
     <div class="heading-row">
       <div>
@@ -30,7 +61,7 @@
         <p>Plan version: {{ plan.version ?? 'Unavailable' }}</p>
         <p class="stale-indicator" role="status">Showing the last server response. Refresh before taking a later action.</p>
       </div>
-      <button type="button" (click)="refresh()" [disabled]="requirementEdit.state() === 'conflict' || requirementEdit.state() === 'network-error' || requirementEdit.state() === 'reapply-ready' || requirementEdit.state() === 'submitting' || preferences.saveState() === 'submitting' || finalizations.saveState() === 'submitting' || finalizations.saveState() === 'network-error' || publications.state() === 'submitting' || publications.state() === 'network-error' || closures.state() === 'submitting' || closures.state() === 'network-error'">Refresh plan</button>
+      <button type="button" (click)="refresh()" [disabled]="requirementEdit.state() === 'conflict' || requirementEdit.state() === 'network-error' || requirementEdit.state() === 'reapply-ready' || requirementEdit.state() === 'submitting' || preferences.saveState() === 'submitting' || finalizations.saveState() === 'submitting' || finalizations.saveState() === 'network-error' || publications.state() === 'submitting' || publications.state() === 'network-error' || closures.state() === 'submitting' || closures.state() === 'network-error' || cancellations.state() === 'submitting' || cancellations.state() === 'network-error'">Refresh plan</button>
     </div>
 
     <section class="detail-card" aria-labelledby="requirements-heading">
@@ -686,6 +717,113 @@
               <a [routerLink]="['/plans', plan.planId]">Return to request history</a>
             </section>
           }
+        </section>
+      }
+    </section>
+
+    <section class="detail-card plan-cancellation" aria-labelledby="plan-cancellation-heading">
+      <h2 id="plan-cancellation-heading">Cancel collaborative plan</h2>
+      <p>This is an organizer action. The server checks your current role, plan state, and plan version.</p>
+      <p>Cancellation permanently ends collaboration. It preserves the plan and request history; it does not delete them.</p>
+
+      @if (cancellationEligible(plan.state)) {
+        <button #cancelPlanTrigger type="button" class="cancel-plan" (click)="reviewCancellation(cancelPlanTrigger)" [disabled]="cancellationReview() !== null || cancellations.state() !== 'idle' || closureReview() !== null || (closures.state() !== 'idle' && closures.state() !== 'succeeded')">
+          Review plan cancellation
+        </button>
+      } @else {
+        <p role="status">This server-read plan state does not allow cancellation.</p>
+      }
+
+      @if (cancellations.result(); as cancellation) {
+        @if (cancellationRefreshState() === 'loading') {
+          <section class="cancellation-progress" aria-live="polite" role="status">
+            <h3 data-cancellation-outcome-focus tabindex="-1">Cancellation accepted; refreshing current state...</h3>
+            <p>The command response was valid. Waiting for fresh plan, current request, and request history reads before showing their state.</p>
+          </section>
+        } @else if (cancellationRefreshState() === 'ready') {
+          <section class="cancellation-result" aria-live="polite" role="status">
+            <h3 data-cancellation-outcome-focus tabindex="-1">Collaborative plan cancelled</h3>
+            <p>The server cancelled plan version {{ cancellation.plan.version ?? 'Unavailable' }}. This command did not delete plan or request history.</p>
+            @if (cancellation.exactRetry) {
+              <p>This is the exact replay result from retrying the same cancellation intent with its original idempotency key and plan ETag.</p>
+            }
+            <p>The current plan, current request, and request history shown on this page were read again after the command succeeded.</p>
+            <p><strong>Current collaboration state:</strong> {{ stateLabel(plan.state) }}.</p>
+            @if (requests.current(); as currentRequest) {
+              <p><strong>Current provider request:</strong> Version {{ currentRequest.requestVersion ?? 'Unavailable' }}, {{ publicationStateLabel(currentRequest.state) }}.</p>
+            } @else if (requests.currentState() === 'absent') {
+              <p><strong>Current provider request:</strong> None according to the server.</p>
+            }
+          </section>
+        } @else if (cancellationRefreshState() === 'error') {
+          <section class="command-state" aria-live="assertive" role="alert">
+            <h3 data-cancellation-outcome-focus tabindex="-1">Cancellation accepted; current state unavailable</h3>
+            <p>The cancellation command succeeded, but the plan, current request, and request history could not all be confirmed by fresh reads.</p>
+            <p>Retry these reads before relying on the displayed plan or request state. This does not resubmit cancellation.</p>
+            <button type="button" (click)="retryCancellationRefresh()">Retry current state reads</button>
+          </section>
+        }
+      }
+
+      @if (cancellationReview(); as reviewed) {
+        @if (cancellations.state() === 'idle') {
+          <section class="cancellation-confirmation" aria-labelledby="cancellation-confirmation-heading" aria-describedby="cancellation-confirmation-description" aria-live="polite" role="alertdialog">
+            <h3 id="cancellation-confirmation-heading">Cancel this collaborative plan?</h3>
+            <div id="cancellation-confirmation-description">
+              <p>This ends collaboration permanently from plan version {{ reviewed.version ?? 'Unavailable' }}.</p>
+              @if (reviewed.state === 'OPEN_FOR_OFFERS') {
+                <p>The server will also cancel the eligible current provider request in the same transaction.</p>
+              } @else {
+                <p>No current provider request is expected from this collaboration state.</p>
+              }
+              <p>Requirements, preferences, finalizations, and provider request history remain readable to authorized members. Nothing is deleted.</p>
+              <p>Closing a provider request is a separate action with a separate idempotency intent.</p>
+            </div>
+            <div class="command-actions">
+              <button #confirmCancellationButton type="button" class="primary-action" (click)="confirmCancellation()" [disabled]="cancellations.state() !== 'idle'">
+                Confirm plan cancellation
+              </button>
+              <button type="button" (click)="cancelCancellationReview()" [disabled]="cancellations.state() !== 'idle'">Keep plan active</button>
+            </div>
+          </section>
+        }
+      }
+
+      @if (cancellations.state() === 'submitting') {
+        <section class="cancellation-progress" aria-live="polite" role="status">
+          <h3 data-cancellation-outcome-focus tabindex="-1">Cancelling collaborative plan...</h3>
+          <p>Waiting for the server response. This cancellation intent cannot be submitted again while it is in progress.</p>
+        </section>
+      } @else if (cancellations.state() === 'network-error') {
+        <section class="command-state" aria-live="assertive" role="alert">
+          <p>The cancellation response was not received. The server may have completed it.</p>
+          <p>Retry sends the exact same cancellation command with the same idempotency key and plan ETag. Refreshing will not resubmit it.</p>
+          @if (cancellations.correlationId()) { <p>Correlation ID: {{ cancellations.correlationId() }}</p> }
+          <div class="command-actions">
+            <button data-cancellation-outcome-focus type="button" (click)="retryCancellation()">Retry exact cancellation</button>
+            <button type="button" (click)="refreshCancellationState()">Stop retrying and refresh</button>
+          </div>
+        </section>
+      } @else if (cancellations.state() === 'conflict') {
+        <section class="command-state" aria-live="assertive" role="alert">
+          <p>The plan changed after this cancellation confirmation. The stale cancellation was not resubmitted.</p>
+          <p>Refresh the plan and request state, then start another deliberate cancellation intent if it is still available.</p>
+          @if (cancellations.correlationId()) { <p>Correlation ID: {{ cancellations.correlationId() }}</p> }
+          <button data-cancellation-outcome-focus type="button" (click)="refreshCancellationState()">Refresh cancellation state</button>
+        </section>
+      } @else if (cancellations.state() === 'error') {
+        <section class="command-state" aria-live="assertive" role="alert">
+          @switch (cancellations.problemCode()) {
+            @case ('INVALID_PLAN_STATE') { <p>This plan state no longer allows cancellation. Refresh to see its current state.</p> }
+            @case ('IDEMPOTENCY_KEY_REUSED') { <p>The cancellation intent key was already used for different input. Refresh before starting a new intent.</p> }
+            @case ('FORBIDDEN_ROLE') { <p>Your current role cannot cancel this collaborative plan.</p> }
+            @case ('ACCESS_DENIED') { <p>Your current role cannot cancel this collaborative plan.</p> }
+            @case ('PRIVATE_RESOURCE_NOT_FOUND') { <p>This plan is unavailable.</p> }
+            @case ('INVALID_CANCELLATION_RESPONSE') { <p>The server returned an incomplete cancellation response. Refresh before taking another action.</p> }
+            @default { <p>The collaborative plan could not be cancelled. Refresh before trying again.</p> }
+          }
+          @if (cancellations.correlationId()) { <p>Correlation ID: {{ cancellations.correlationId() }}</p> }
+          <button data-cancellation-outcome-focus type="button" (click)="refreshCancellationState()">Refresh plan and request state</button>
         </section>
       }
     </section>

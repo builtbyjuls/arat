@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { describe, expect, it, vi } from 'vitest';
-import { of } from 'rxjs';
+import { BehaviorSubject, of } from 'rxjs';
 import { signal } from '@angular/core';
 import { PlanDetailComponent } from './plan-detail.component';
 import { PlanDetailService } from './plan-detail.service';
@@ -11,6 +11,7 @@ import { PlanFinalizationService } from './plan-finalization.service';
 import { PlanPublicationService } from './plan-publication.service';
 import { PlanRequestHistoryService } from './plan-request-history.service';
 import { PlanRequestClosureService } from './plan-request-closure.service';
+import { PlanCancellationService } from './plan-cancellation.service';
 import { ActorScopeResetService } from '../identity/actor-scope-reset.service';
 
 describe('PlanDetailComponent', () => {
@@ -341,6 +342,361 @@ describe('PlanDetailComponent', () => {
 
     expect(closures.dismiss).toHaveBeenCalledOnce();
     expect(fixture.componentInstance.closureReview()?.requestId).toBe('request-new');
+  });
+
+  it.each(['COLLABORATING', 'OPEN_FOR_OFFERS'])('offers cancellation for the eligible %s server state', async (state) => {
+    const fixture = await createComponent(fakeDetail('ready', state));
+
+    expect((fixture.nativeElement as HTMLElement).querySelector('.cancel-plan')).not.toBeNull();
+  });
+
+  it('does not offer cancellation for a terminal server state', async () => {
+    const fixture = await createComponent(fakeDetail('ready', 'CANCELLED'));
+    const root = fixture.nativeElement as HTMLElement;
+
+    expect(root.querySelector('.cancel-plan')).toBeNull();
+    expect(root.textContent).toContain('server-read plan state does not allow cancellation');
+  });
+
+  it('focuses explicit cancellation confirmation and restores its trigger', async () => {
+    const fixture = await createComponent(fakeDetail('ready', 'OPEN_FOR_OFFERS'));
+    const root = fixture.nativeElement as HTMLElement;
+    const trigger = root.querySelector<HTMLButtonElement>('.cancel-plan');
+
+    trigger?.focus();
+    trigger?.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const confirmation = root.querySelector('.cancellation-confirmation');
+    const buttons = confirmation?.querySelectorAll('button');
+    expect(confirmation?.textContent).toContain('also cancel the eligible current provider request');
+    expect(confirmation?.textContent).toContain('Nothing is deleted');
+    expect(confirmation?.textContent).toContain('separate idempotency intent');
+    expect(document.activeElement).toBe(buttons?.[0]);
+
+    buttons?.[1]?.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it('submits cancellation once and renders only refreshed server state', async () => {
+    const detail = fakeDetail('ready', 'OPEN_FOR_OFFERS');
+    const requests = fakeRequests();
+    requests.current.set(request('request-current', 2, 'OPEN'));
+    requests.items.set([request('request-current', 2, 'OPEN')]);
+    const cancellations = fakeCancellations();
+    const result = cancellationResult(false);
+    cancellations.cancel.mockImplementation(async () => {
+      cancellations.result.set(result);
+      cancellations.state.set('succeeded');
+      return result;
+    });
+    const fixture = await createComponent(
+      detail, fakeEdit(), fakePreferences(), true, fakeFinalizations(),
+      fakePublications(), requests, fakeClosures(), cancellations,
+    );
+    const root = fixture.nativeElement as HTMLElement;
+    await vi.waitFor(() => {
+      expect(detail.load).toHaveBeenCalledTimes(1);
+      expect(requests.load).toHaveBeenCalledTimes(1);
+    });
+    detail.load.mockClear();
+    detail.load.mockImplementation(async () => {
+      detail.state.set('loading');
+      detail.plan.set(null);
+      detail.plan.set({
+        planId: 'plan-1', title: 'Friday badminton', state: 'CANCELLED', version: 8,
+        requirements: {
+          category: 'COURT', timeZone: 'Asia/Manila', area: { code: 'BGC', radiusKm: 5 },
+          headcount: { minimum: 4, maximum: 10 },
+          budget: { currency: 'PHP', minimumAmount: '0.00', maximumAmount: '2500.00' },
+          candidateWindows: [], mustHaves: [], categoryAttributes: { hasParking: true },
+        },
+      });
+      detail.etag.set('"8"');
+      detail.state.set('ready');
+    });
+    requests.load.mockClear();
+    requests.load.mockImplementation(async () => {
+      requests.current.set(null);
+      requests.currentState.set('absent');
+      requests.items.set([request('request-current', 2, 'CANCELLED')]);
+    });
+
+    root.querySelector<HTMLButtonElement>('.cancel-plan')?.click();
+    fixture.detectChanges();
+    root.querySelector<HTMLButtonElement>('.cancellation-confirmation .primary-action')?.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(cancellations.cancel).toHaveBeenCalledTimes(1);
+    expect(cancellations.cancel).toHaveBeenCalledWith('plan-1', '"7"');
+    expect(detail.load).toHaveBeenCalledWith('plan-1');
+    expect(requests.load).toHaveBeenCalledWith('plan-1');
+    expect(root.textContent).toContain('Current collaboration state: Cancelled');
+    expect(root.textContent).toContain('Current provider request: None according to the server');
+    expect(root.textContent).toContain('Version 2: Cancelled');
+    expect(document.activeElement).toBe(root.querySelector('.cancellation-result h3'));
+  });
+
+  it('withholds current-state claims until all post-cancellation reads finish', async () => {
+    let finishRequestRefresh!: () => void;
+    const detail = fakeDetail('ready', 'OPEN_FOR_OFFERS');
+    const requests = fakeRequests();
+    requests.current.set(request('request-current', 2, 'OPEN'));
+    requests.items.set([request('request-current', 2, 'OPEN')]);
+    const cancellations = fakeCancellations();
+    const result = cancellationResult(false);
+    cancellations.cancel.mockImplementation(async () => {
+      cancellations.result.set(result);
+      cancellations.state.set('succeeded');
+      return result;
+    });
+    const fixture = await createComponent(
+      detail, fakeEdit(), fakePreferences(), true, fakeFinalizations(),
+      fakePublications(), requests, fakeClosures(), cancellations,
+    );
+    const root = fixture.nativeElement as HTMLElement;
+    await vi.waitFor(() => {
+      expect(detail.load).toHaveBeenCalledTimes(1);
+      expect(requests.load).toHaveBeenCalledTimes(1);
+    });
+    detail.load.mockClear();
+    requests.load.mockClear();
+    detail.load.mockImplementation(async () => {
+      detail.plan.update((plan) => plan === null ? null : { ...plan, state: 'CANCELLED', version: 8 });
+      detail.etag.set('"8"');
+    });
+    requests.load.mockImplementation(() => {
+      requests.currentState.set('loading');
+      requests.historyState.set('loading');
+      requests.items.set([]);
+      return new Promise<void>((resolve) => {
+        finishRequestRefresh = () => {
+          requests.current.set(null);
+          requests.currentState.set('absent');
+          requests.items.set([request('request-current', 2, 'CANCELLED')]);
+          requests.historyState.set('ready');
+          resolve();
+        };
+      });
+    });
+
+    root.querySelector<HTMLButtonElement>('.cancel-plan')?.click();
+    fixture.detectChanges();
+    root.querySelector<HTMLButtonElement>('.cancellation-confirmation .primary-action')?.click();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    expect(root.textContent).toContain('Cancellation accepted; refreshing current state');
+    expect(root.textContent).not.toContain('Current provider request: Version 2, Open');
+    expect(root.textContent).not.toContain('were read again after the command succeeded');
+
+    finishRequestRefresh();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(root.textContent).toContain('Current provider request: None according to the server');
+  });
+
+  it('reports a failed post-cancellation refresh and retries reads without resubmitting', async () => {
+    const detail = fakeDetail('ready', 'OPEN_FOR_OFFERS');
+    const requests = fakeRequests();
+    const cancellations = fakeCancellations();
+    const result = cancellationResult(false);
+    cancellations.cancel.mockImplementation(async () => {
+      cancellations.result.set(result);
+      cancellations.state.set('succeeded');
+      return result;
+    });
+    const fixture = await createComponent(
+      detail, fakeEdit(), fakePreferences(), true, fakeFinalizations(),
+      fakePublications(), requests, fakeClosures(), cancellations,
+    );
+    const root = fixture.nativeElement as HTMLElement;
+    await vi.waitFor(() => {
+      expect(detail.load).toHaveBeenCalledTimes(1);
+      expect(requests.load).toHaveBeenCalledTimes(1);
+    });
+    detail.load.mockClear();
+    requests.load.mockClear();
+    detail.load.mockImplementation(async () => {
+      detail.plan.update((plan) => plan === null ? null : { ...plan, state: 'CANCELLED', version: 8 });
+      detail.etag.set('"8"');
+    });
+    requests.load.mockImplementation(async () => {
+      requests.current.set(null);
+      requests.currentState.set('error');
+      requests.items.set([]);
+      requests.historyState.set('error');
+    });
+
+    root.querySelector<HTMLButtonElement>('.cancel-plan')?.click();
+    fixture.detectChanges();
+    root.querySelector<HTMLButtonElement>('.cancellation-confirmation .primary-action')?.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(root.textContent).toContain('could not all be confirmed by fresh reads');
+    expect(root.textContent).toContain('This does not resubmit cancellation');
+    expect(root.textContent).not.toContain('were read again after the command succeeded');
+
+    requests.load.mockImplementation(async () => {
+      requests.current.set(null);
+      requests.currentState.set('absent');
+      requests.items.set([request('request-current', 2, 'CANCELLED')]);
+      requests.historyState.set('ready');
+    });
+    root.querySelector<HTMLButtonElement>('.plan-cancellation .command-state button')?.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(cancellations.cancel).toHaveBeenCalledTimes(1);
+    expect(requests.load).toHaveBeenCalledTimes(2);
+    expect(root.textContent).toContain('Current provider request: None according to the server');
+  });
+
+  it('keeps a successful cancellation visible when the plan reread fails and retries only reads', async () => {
+    const detail = fakeDetail('ready', 'OPEN_FOR_OFFERS');
+    const requests = fakeRequests();
+    const cancellations = fakeCancellations();
+    const result = cancellationResult(false);
+    cancellations.cancel.mockImplementation(async () => {
+      cancellations.result.set(result);
+      cancellations.state.set('succeeded');
+      return result;
+    });
+    const fixture = await createComponent(
+      detail, fakeEdit(), fakePreferences(), true, fakeFinalizations(),
+      fakePublications(), requests, fakeClosures(), cancellations,
+    );
+    const root = fixture.nativeElement as HTMLElement;
+    await vi.waitFor(() => {
+      expect(detail.load).toHaveBeenCalledTimes(1);
+      expect(requests.load).toHaveBeenCalledTimes(1);
+    });
+    detail.load.mockClear();
+    requests.load.mockClear();
+    const currentPlan = detail.plan();
+    if (currentPlan === null) {
+      throw new Error('Expected the initial plan fixture to be ready.');
+    }
+    const refreshedPlan = { ...currentPlan, state: 'CANCELLED', version: 8 };
+    detail.load
+      .mockImplementationOnce(async () => {
+        detail.state.set('error');
+        detail.plan.set(null);
+        detail.etag.set(null);
+      })
+      .mockImplementationOnce(async () => {
+        detail.plan.set(refreshedPlan);
+        detail.etag.set('"8"');
+        detail.state.set('ready');
+      });
+    requests.load.mockImplementation(async () => {
+      requests.current.set(null);
+      requests.currentState.set('absent');
+      requests.items.set([request('request-current', 2, 'CANCELLED')]);
+      requests.historyState.set('ready');
+    });
+
+    root.querySelector<HTMLButtonElement>('.cancel-plan')?.click();
+    fixture.detectChanges();
+    root.querySelector<HTMLButtonElement>('.cancellation-confirmation .primary-action')?.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(root.textContent).toContain('Cancellation accepted; current state unavailable');
+    expect(root.textContent).toContain('This does not resubmit cancellation');
+    expect(root.textContent).not.toContain('were read again after the command succeeded');
+
+    root.querySelector<HTMLButtonElement>('.state button')?.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(cancellations.cancel).toHaveBeenCalledTimes(1);
+    expect(detail.load).toHaveBeenCalledTimes(2);
+    expect(requests.load).toHaveBeenCalledTimes(2);
+    expect(root.textContent).toContain('Current collaboration state: Cancelled');
+    expect(root.textContent).toContain('Current provider request: None according to the server');
+  });
+
+  it.each([
+    ['INVALID_PLAN_STATE', 'state no longer allows cancellation'],
+    ['PRIVATE_RESOURCE_NOT_FOUND', 'This plan is unavailable'],
+    ['FORBIDDEN_ROLE', 'current role cannot cancel'],
+    ['IDEMPOTENCY_KEY_REUSED', 'intent key was already used'],
+  ])('renders distinct cancellation failure %s without raw server detail', async (problemCode, message) => {
+    const cancellations = fakeCancellations();
+    cancellations.state.set('error');
+    cancellations.problemCode.set(problemCode);
+    const fixture = await createComponent(
+      fakeDetail('ready', 'OPEN_FOR_OFFERS'), fakeEdit(), fakePreferences(), true,
+      fakeFinalizations(), fakePublications(), fakeRequests(), fakeClosures(), cancellations,
+    );
+    const text = (fixture.nativeElement as HTMLElement).textContent;
+
+    expect(text).toContain(message);
+    expect(text).not.toContain('Do not render this raw detail');
+  });
+
+  it('distinguishes cancellation transport retry, stale conflict, and exact replay', async () => {
+    const cancellations = fakeCancellations();
+    cancellations.state.set('network-error');
+    const fixture = await createComponent(
+      fakeDetail('ready', 'OPEN_FOR_OFFERS'), fakeEdit(), fakePreferences(), true,
+      fakeFinalizations(), fakePublications(), fakeRequests(), fakeClosures(), cancellations,
+    );
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.textContent).toContain('Retry sends the exact same cancellation command');
+    expect(document.activeElement?.textContent).toContain('Retry exact cancellation');
+
+    cancellations.state.set('conflict');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(root.textContent).toContain('stale cancellation was not resubmitted');
+    expect(document.activeElement?.textContent).toContain('Refresh cancellation state');
+
+    cancellations.result.set(cancellationResult(true));
+    cancellations.state.set('succeeded');
+    fixture.componentInstance.cancellationRefreshState.set('ready');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(root.textContent).toContain('exact replay result');
+  });
+
+  it('clears an open cancellation confirmation when the actor changes', async () => {
+    const fixture = await createComponent(fakeDetail('ready', 'COLLABORATING'));
+    const root = fixture.nativeElement as HTMLElement;
+    root.querySelector<HTMLButtonElement>('.cancel-plan')?.click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.cancellationReview()).not.toBeNull();
+
+    TestBed.inject(ActorScopeResetService).reset();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.cancellationReview()).toBeNull();
+    expect(root.querySelector('.cancellation-confirmation')).toBeNull();
+  });
+
+  it('clears cancellation confirmation when the route changes to another plan', async () => {
+    const route = fakeActivatedRoute();
+    const fixture = await createComponent(
+      fakeDetail('ready', 'COLLABORATING'), fakeEdit(), fakePreferences(), true,
+      fakeFinalizations(), fakePublications(), fakeRequests(), fakeClosures(),
+      fakeCancellations(), route,
+    );
+    const root = fixture.nativeElement as HTMLElement;
+    root.querySelector<HTMLButtonElement>('.cancel-plan')?.click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.cancellationReview()?.planId).toBe('plan-1');
+
+    route.navigate('plan-2');
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.cancellationReview()).toBeNull();
+    expect(root.querySelector('.cancellation-confirmation')).toBeNull();
   });
 
   it('renders a private unavailable state without raw problem details', async () => {
@@ -952,12 +1308,14 @@ async function createComponent(
   publications = fakePublications(),
   requests = fakeRequests(),
   closures = fakeClosures(),
+  cancellations = fakeCancellations(),
+  route = fakeActivatedRoute(),
 ) {
   await TestBed.configureTestingModule({
     imports: [PlanDetailComponent],
     providers: [
       provideRouter([{ path: 'plans/:planId', component: PlanDetailComponent }]),
-      { provide: ActivatedRoute, useValue: { paramMap: of(convertToParamMap({ planId: 'plan-1' })), queryParamMap: of(convertToParamMap({})), snapshot: { paramMap: convertToParamMap({ planId: 'plan-1' }) } } },
+      { provide: ActivatedRoute, useValue: route },
       { provide: PlanDetailService, useValue: detail },
       { provide: PlanRequirementEditService, useValue: edit },
       { provide: PlanPreferenceService, useValue: preferences },
@@ -965,6 +1323,7 @@ async function createComponent(
       { provide: PlanPublicationService, useValue: publications },
       { provide: PlanRequestHistoryService, useValue: requests },
       { provide: PlanRequestClosureService, useValue: closures },
+      { provide: PlanCancellationService, useValue: cancellations },
     ],
   }).compileComponents();
   const fixture = TestBed.createComponent(PlanDetailComponent);
@@ -974,6 +1333,20 @@ async function createComponent(
   }
   fixture.detectChanges();
   return fixture;
+}
+
+function fakeActivatedRoute(planId = 'plan-1') {
+  const paramMap = new BehaviorSubject(convertToParamMap({ planId }));
+  const snapshot = { paramMap: paramMap.value };
+  return {
+    paramMap,
+    queryParamMap: of(convertToParamMap({})),
+    snapshot,
+    navigate(nextPlanId: string): void {
+      snapshot.paramMap = convertToParamMap({ planId: nextPlanId });
+      paramMap.next(snapshot.paramMap);
+    },
+  };
 }
 
 function fakePublications() {
@@ -1031,6 +1404,27 @@ function fakeClosures() {
     releasePlan: vi.fn(),
     close: vi.fn(async (): Promise<ReturnType<typeof closureResult> | null> => null),
     retry: vi.fn(async (): Promise<ReturnType<typeof closureResult> | null> => null),
+    dismiss: vi.fn(() => {
+      state.set('idle');
+      problemCode.set(null);
+      result.set(null);
+    }),
+  };
+}
+
+function fakeCancellations() {
+  const state = signal<'conflict' | 'error' | 'idle' | 'network-error' | 'submitting' | 'succeeded'>('idle');
+  const problemCode = signal<string | null>(null);
+  const result = signal<ReturnType<typeof cancellationResult> | null>(null);
+  return {
+    state,
+    problemCode,
+    correlationId: signal<string | null>(null),
+    result,
+    usePlan: vi.fn(),
+    releasePlan: vi.fn(),
+    cancel: vi.fn(async (): Promise<ReturnType<typeof cancellationResult> | null> => null),
+    retry: vi.fn(async (): Promise<ReturnType<typeof cancellationResult> | null> => null),
     dismiss: vi.fn(() => {
       state.set('idle');
       problemCode.set(null);
@@ -1182,6 +1576,19 @@ function closureResult(exactRetry: boolean) {
     request: {
       ...request('request-current', 2, 'CLOSED'),
       category: 'COURT',
+    },
+  };
+}
+
+function cancellationResult(exactRetry: boolean) {
+  return {
+    etag: '"8"',
+    exactRetry,
+    plan: {
+      planId: 'plan-1',
+      createdByAccountId: 'actor-1',
+      state: 'CANCELLED',
+      version: 8,
     },
   };
 }

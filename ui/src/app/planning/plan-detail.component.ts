@@ -27,6 +27,10 @@ import {
   RequestClosureResult,
   RequestClosureState,
 } from './plan-request-closure.service';
+import {
+  PlanCancellationResult,
+  PlanCancellationService,
+} from './plan-cancellation.service';
 import { ActorScopeResetService } from '../identity/actor-scope-reset.service';
 import {
   createRequirementForm,
@@ -61,6 +65,7 @@ export class PlanDetailComponent implements AfterViewChecked, OnDestroy, OnInit 
   readonly publications = inject(PlanPublicationService);
   readonly requests = inject(PlanRequestHistoryService);
   readonly closures = inject(PlanRequestClosureService);
+  readonly cancellations = inject(PlanCancellationService);
   readonly #scopeReset = inject(ActorScopeResetService);
   readonly #route = inject(ActivatedRoute);
   readonly editForm = createRequirementForm();
@@ -69,15 +74,27 @@ export class PlanDetailComponent implements AfterViewChecked, OnDestroy, OnInit 
   readonly preferenceFormReady = signal(false);
   readonly publicationReview = signal<RequirementFinalization | null>(null);
   readonly closureReview = signal<GroupPublishedRequest | null>(null);
+  readonly cancellationReview = signal<{
+    planId: string;
+    state: string | undefined;
+    version: number | undefined;
+  } | null>(null);
+  readonly cancellationRefreshState = signal<'error' | 'idle' | 'loading' | 'ready'>('idle');
   @ViewChild('confirmCloseButton') private confirmCloseButton?: ElementRef<HTMLButtonElement>;
+  @ViewChild('confirmCancellationButton') private confirmCancellationButton?: ElementRef<HTMLButtonElement>;
   readonly #element = inject<ElementRef<HTMLElement>>(ElementRef);
   #destroyed = false;
   #closureConfirmationFocused = false;
   #focusedClosureState: RequestClosureState | null = null;
   #focusPlanHeadingAfterClosure = false;
   #closureTrigger: HTMLButtonElement | null = null;
+  #cancellationConfirmationFocused = false;
+  #focusedCancellationOutcome: string | null = null;
+  #focusPlanHeadingAfterCancellation = false;
+  #cancellationTrigger: HTMLButtonElement | null = null;
   #preferenceFormPlanId: string | null = null;
   #finalizationFormPlanId: string | null = null;
+  #activePlanId: string | null = null;
   #loadRequestId = 0;
   #unregisterScopeReset: (() => void) | null = null;
 
@@ -89,18 +106,26 @@ export class PlanDetailComponent implements AfterViewChecked, OnDestroy, OnInit 
       this.preferenceFormReady.set(false);
       this.publicationReview.set(null);
       this.clearClosureReview();
+      this.clearCancellationReview();
+      this.cancellationRefreshState.set('idle');
       hydratePreferenceForm(this.preferenceForm, null);
       this.finalizationForm.reset({ candidateWindowId: '', offerDeadline: '' });
     });
     this.#route.paramMap.subscribe((params) => {
       const planId = params.get('planId');
       if (planId !== null) {
+        if (this.#activePlanId !== planId) {
+          this.clearCancellationReview();
+          this.cancellationRefreshState.set('idle');
+          this.#activePlanId = planId;
+        }
         this.requirementEdit.usePlan(planId);
         this.preferences.usePlan(planId);
         this.finalizations.usePlan(planId);
         this.publications.usePlan(planId);
         this.requests.usePlan(planId);
         this.closures.usePlan(planId);
+        this.cancellations.usePlan(planId);
         void this.loadAndHydrate(planId);
       }
     });
@@ -117,6 +142,7 @@ export class PlanDetailComponent implements AfterViewChecked, OnDestroy, OnInit 
     this.#loadRequestId += 1;
     this.#unregisterScopeReset?.();
     this.#unregisterScopeReset = null;
+    this.#activePlanId = null;
     const planId = this.planId();
     if (planId !== null) {
       this.requirementEdit.releasePlan(planId);
@@ -125,10 +151,48 @@ export class PlanDetailComponent implements AfterViewChecked, OnDestroy, OnInit 
       this.publications.releasePlan(planId);
       this.requests.releasePlan(planId);
       this.closures.releasePlan(planId);
+      this.cancellations.releasePlan(planId);
     }
   }
 
   ngAfterViewChecked(): void {
+    const cancellationState = this.cancellations.state();
+    if (this.#focusPlanHeadingAfterCancellation) {
+      const planHeading = this.#element.nativeElement.querySelector<HTMLElement>('#plan-heading');
+      if (planHeading !== null) {
+        this.#focusPlanHeadingAfterCancellation = false;
+        queueMicrotask(() => planHeading.focus());
+        return;
+      }
+    }
+    if (
+      this.cancellationReview() !== null
+      && cancellationState === 'idle'
+      && !this.#cancellationConfirmationFocused
+    ) {
+      this.#cancellationConfirmationFocused = true;
+      queueMicrotask(() => this.confirmCancellationButton?.nativeElement.focus());
+      return;
+    }
+    const cancellationOutcome = cancellationState === 'succeeded'
+      ? `${cancellationState}:${this.cancellationRefreshState()}`
+      : cancellationState;
+    if (cancellationState !== 'idle' && cancellationOutcome !== this.#focusedCancellationOutcome) {
+      const outcome = this.#element.nativeElement
+        .querySelector<HTMLElement>('[data-cancellation-outcome-focus]');
+      if (outcome !== null) {
+        this.#focusedCancellationOutcome = cancellationOutcome;
+        queueMicrotask(() => outcome.focus());
+        return;
+      }
+    }
+    if (this.cancellationReview() === null || cancellationState !== 'idle') {
+      this.#cancellationConfirmationFocused = false;
+    }
+    if (cancellationState === 'idle') {
+      this.#focusedCancellationOutcome = null;
+    }
+
     const state = this.closures.state();
     if (this.#focusPlanHeadingAfterClosure) {
       const planHeading = this.#element.nativeElement.querySelector<HTMLElement>('#plan-heading');
@@ -500,11 +564,13 @@ export class PlanDetailComponent implements AfterViewChecked, OnDestroy, OnInit 
   }
 
   closureActionAvailable(request: GroupPublishedRequest): boolean {
-    return this.closures.state() === 'idle'
+    return this.cancellationReview() === null
+      && this.cancellations.state() === 'idle'
+      && (this.closures.state() === 'idle'
       || (
         this.closures.state() === 'succeeded'
         && this.closures.result()?.request.requestId !== request.requestId
-      );
+      ));
   }
 
   cancelClosureReview(): void {
@@ -557,6 +623,89 @@ export class PlanDetailComponent implements AfterViewChecked, OnDestroy, OnInit 
     this.closures.dismiss();
     void Promise.all([this.planDetail.load(planId), this.requests.load(planId)])
       .then(() => this.discardPrivateRequestAccess(planId));
+  }
+
+  reviewCancellation(trigger: HTMLButtonElement): void {
+    const plan = this.planDetail.plan();
+    const planId = this.planId();
+    if (
+      plan === null
+      || planId === null
+      || !this.cancellationEligible(plan.state)
+      || this.cancellations.state() !== 'idle'
+      || (this.closures.state() !== 'idle' && this.closures.state() !== 'succeeded')
+    ) {
+      return;
+    }
+    this.cancellationRefreshState.set('idle');
+    this.#cancellationTrigger = trigger;
+    this.cancellationReview.set({ planId, state: plan.state, version: plan.version });
+  }
+
+  cancellationEligible(state: string | undefined): boolean {
+    return state === 'COLLABORATING' || state === 'OPEN_FOR_OFFERS';
+  }
+
+  cancelCancellationReview(): void {
+    if (this.cancellations.state() !== 'idle') {
+      return;
+    }
+    const trigger = this.#cancellationTrigger;
+    this.clearCancellationReview();
+    queueMicrotask(() => trigger?.focus());
+  }
+
+  confirmCancellation(): void {
+    const reviewed = this.cancellationReview();
+    const plan = this.planDetail.plan();
+    const planId = this.planId();
+    const etag = this.planDetail.etag();
+    if (
+      reviewed === null
+      || plan === null
+      || planId === null
+      || reviewed.planId !== planId
+      || !this.cancellationEligible(plan.state)
+      || reviewed.state !== plan.state
+      || reviewed.version !== plan.version
+    ) {
+      this.clearCancellationReview();
+      return;
+    }
+    if (etag === null) {
+      this.clearCancellationReview();
+      void this.loadAndHydrate(planId);
+      return;
+    }
+    void this.cancellations.cancel(planId, etag)
+      .then((result) => this.handleCancellation(result, planId));
+  }
+
+  retryCancellation(): void {
+    const planId = this.planId();
+    if (planId !== null) {
+      void this.cancellations.retry(planId)
+        .then((result) => this.handleCancellation(result, planId));
+    }
+  }
+
+  refreshCancellationState(): void {
+    const planId = this.planId();
+    if (planId === null) {
+      return;
+    }
+    this.clearCancellationReview();
+    this.cancellationRefreshState.set('idle');
+    this.cancellations.dismiss();
+    void Promise.all([this.planDetail.load(planId), this.requests.load(planId)])
+      .then(() => this.discardPrivateRequestAccess(planId));
+  }
+
+  retryCancellationRefresh(): void {
+    const planId = this.planId();
+    if (planId !== null && this.cancellations.result() !== null) {
+      void this.refreshAfterCancellation(planId);
+    }
   }
 
   requestHistoryLabel(requestId: string | undefined): string {
@@ -791,10 +940,57 @@ export class PlanDetailComponent implements AfterViewChecked, OnDestroy, OnInit 
     await this.loadAndHydrate(planId);
   }
 
+  private async handleCancellation(
+    result: PlanCancellationResult | null,
+    planId: string,
+  ): Promise<void> {
+    if (this.#destroyed || this.planId() !== planId) {
+      return;
+    }
+    if (result === null) {
+      if (this.cancellations.problemCode() === 'PRIVATE_RESOURCE_NOT_FOUND') {
+        this.clearCancellationReview();
+        this.#focusPlanHeadingAfterCancellation = true;
+        this.planDetail.discardInaccessiblePlan(planId);
+      }
+      return;
+    }
+    this.clearCancellationReview();
+    await this.refreshAfterCancellation(planId);
+  }
+
+  private async refreshAfterCancellation(planId: string): Promise<void> {
+    const actorGeneration = this.#scopeReset.generation();
+    this.cancellationRefreshState.set('loading');
+    await Promise.all([this.planDetail.load(planId), this.requests.load(planId)]);
+    if (
+      this.#destroyed
+      || this.planId() !== planId
+      || actorGeneration !== this.#scopeReset.generation()
+      || this.cancellations.result() === null
+    ) {
+      return;
+    }
+    this.discardPrivateRequestAccess(planId);
+    const refreshFailed = this.planDetail.state() !== 'ready'
+      || this.planDetail.plan()?.state !== 'CANCELLED'
+      || this.requests.currentState() === 'error'
+      || this.requests.currentState() === 'loading'
+      || this.requests.historyState() === 'error'
+      || this.requests.historyState() === 'loading';
+    this.cancellationRefreshState.set(refreshFailed ? 'error' : 'ready');
+  }
+
   private clearClosureReview(): void {
     this.closureReview.set(null);
     this.#closureTrigger = null;
     this.#closureConfirmationFocused = false;
+  }
+
+  private clearCancellationReview(): void {
+    this.cancellationReview.set(null);
+    this.#cancellationTrigger = null;
+    this.#cancellationConfirmationFocused = false;
   }
 
   private isCurrentLoad(
