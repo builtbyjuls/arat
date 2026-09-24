@@ -1,0 +1,29 @@
+<main>
+  <p class="local-development-label">Local development only</p>
+  <h1>Arat web client</h1>
+
+  <label for="local-actor">Local actor</label>
+  <select
+    id="local-actor"
+    [value]="actorSession.selectedPersonaId() ?? ''"
+    (change)="selectActor($event)"
+  >
+    <option value="">Choose a local actor</option>
+    @for (actor of actorSession.actors ?? []; track actor.id) {
+      <option [value]="actor.id">{{ actor.label }}</option>
+    }
+  </select>
+
+  @if (actorSession.state() === 'validating') {
+    <p role="status">Verifying local actor...</p>
+  }
+
+  @if (unavailableMessage()) {
+    <p role="alert">{{ unavailableMessage() }}</p>
+  }
+
+  @if (actorSession.isVerified()) {
+    <p role="status">Local actor verified: {{ actorSession.actor()?.label }}</p>
+    <router-outlet />
+  }
+</main>

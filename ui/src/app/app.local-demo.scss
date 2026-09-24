@@ -1,0 +1,17 @@
+main {
+  margin: 0 auto;
+  max-width: 40rem;
+  padding: 1rem;
+}
+
+.local-development-label {
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+select {
+  display: block;
+  margin-top: 0.5rem;
+  min-height: 44px;
+  min-width: 16rem;
+}

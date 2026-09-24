@@ -13,6 +13,7 @@ import {
   ifMatch,
   ifNoneMatch,
 } from './api-http-client';
+import { ActorScopeResetService } from '../identity/actor-scope-reset.service';
 
 describe('ApiHttpClient', () => {
   let client: ApiHttpClient;
@@ -69,6 +70,79 @@ describe('ApiHttpClient', () => {
       location: '/api/v1/groups/group-id',
       correlationId: 'correlation-1',
     });
+  });
+
+  it('discards a response after the local actor scope changes', () => {
+    const values: unknown[] = [];
+    const errors: unknown[] = [];
+
+    client.read('/groups').subscribe({
+      next: (value) => values.push(value),
+      error: (error: unknown) => errors.push(error),
+    });
+    const request = http.expectOne('/api/v1/groups');
+
+    TestBed.inject(ActorScopeResetService).reset();
+    request.flush({ items: [{ groupId: 'ari-group' }], nextCursor: null });
+
+    expect(values).toEqual([]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toBeInstanceOf(ApiHttpError);
+  });
+
+  it('rejects an idempotent command intent after the local actor scope changes', async () => {
+    const intent = client.beginIdempotentMutation({
+      method: 'POST',
+      path: '/groups',
+      body: { name: 'Ari group' },
+    });
+
+    TestBed.inject(ActorScopeResetService).reset();
+
+    await expect(firstValueFrom(client.executeIdempotent(intent))).rejects.toThrow(
+      'The local actor changed before this request completed.',
+    );
+    http.expectNone('/api/v1/groups');
+  });
+
+  it('rejects a replacement started before the local actor scope changes', async () => {
+    const replacement = client.mutate({
+      method: 'PUT',
+      path: '/plans/plan-id/requirements',
+      body: { title: 'Ari changes' },
+      precondition: ifMatch('"3"'),
+    });
+
+    TestBed.inject(ActorScopeResetService).reset();
+
+    await expect(firstValueFrom(replacement)).rejects.toBeInstanceOf(ApiHttpError);
+    http.expectNone('/api/v1/plans/plan-id/requirements');
+  });
+
+  it('rejects an invitation intent when the actor changes during token digesting', async () => {
+    let resolveDigest = (_digest: ArrayBuffer): void => {
+      throw new Error('Digest resolver was not initialized.');
+    };
+    const digest = vi.spyOn(globalThis.crypto.subtle, 'digest').mockImplementation(
+      () => new Promise<ArrayBuffer>((resolve) => {
+        resolveDigest = resolve;
+      }),
+    );
+
+    try {
+      const pendingIntent = client.beginInvitationAcceptance('one-time-invitation-token');
+      TestBed.inject(ActorScopeResetService).reset();
+      resolveDigest(new ArrayBuffer(32));
+      const intent = await pendingIntent;
+      digest.mockRestore();
+
+      await expect(firstValueFrom(
+        client.executeInvitationAcceptance(intent, 'one-time-invitation-token'),
+      )).rejects.toThrow('The local actor changed before this request completed.');
+      http.expectNone('/api/v1/group-invites/one-time-invitation-token/accept');
+    } finally {
+      digest.mockRestore();
+    }
   });
 
   it('uses null for missing optional headers and a missing body', async () => {

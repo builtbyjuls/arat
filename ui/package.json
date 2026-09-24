@@ -7,12 +7,14 @@
     "generate:api-types": "openapi-typescript openapi/arat-v1.json -o src/app/api/generated/arat-api.ts",
     "prebuild": "npm run generate:api-types",
     "build": "ng build",
+    "build:local-demo": "ng build --configuration local-demo",
     "lint": "ng lint",
     "pretest": "npm run generate:api-types",
     "test": "ng test --watch=false",
     "pretest:ci": "npm run generate:api-types",
     "test:ci": "ng test --watch=false --coverage",
-    "check": "npm run lint && npm run test:ci && npm run build"
+    "verify:production-local-demo-exclusion": "node scripts/verify-production-local-demo-exclusion.mjs",
+    "check": "npm run lint && npm run test:ci && npm run build && npm run verify:production-local-demo-exclusion"
   },
   "private": true,
   "packageManager": "npm@11.19.0",

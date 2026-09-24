@@ -1,5 +1,6 @@
 import {
   HttpClient,
+  HttpContext,
   HttpErrorResponse,
   HttpHeaders,
   HttpParams,
@@ -19,6 +20,8 @@ import {
   throwError,
 } from 'rxjs';
 import { environment } from '../../environments/environment';
+import { ACTOR_SCOPE_GENERATION } from '../identity/actor-scope-context';
+import { ActorScopeResetService } from '../identity/actor-scope-reset.service';
 
 const PROBLEM_CONTENT_TYPE = 'application/problem+json';
 const UNKNOWN_ERROR_CODE = 'UNKNOWN_ERROR';
@@ -135,6 +138,7 @@ class MutationIntent<TBody>
   constructor(
     readonly idempotencyKey: string,
     request: ApiMutationRequest<TBody>,
+    readonly actorScopeGeneration: number,
   ) {
     super();
     this.request = snapshotMutation(request);
@@ -154,6 +158,7 @@ class InvitationIntent
   constructor(
     readonly idempotencyKey: string,
     tokenDigest: string,
+    readonly actorScopeGeneration: number,
   ) {
     super();
     this.#tokenDigest = tokenDigest;
@@ -188,27 +193,41 @@ export function ifNoneMatch(): ApiPrecondition {
 export class ApiHttpClient {
   private readonly http = inject(HttpClient);
   private readonly generateIdempotencyKey = inject(IDEMPOTENCY_KEY_GENERATOR);
+  private readonly scopeReset = inject(ActorScopeResetService);
 
   read<T>(path: string, params?: HttpParams): Observable<ApiHttpResult<T>> {
-    return this.http.get<T>(this.apiUrl(path), {
-      observe: 'response',
-      params,
-    }).pipe(
+    return defer(() => {
+      const generation = this.scopeReset.generation();
+      return defer(() => {
+        this.scopeReset.requireCurrent(generation);
+        return this.http.get<T>(this.apiUrl(path), {
+          context: actorScopeContext(generation),
+          observe: 'response',
+          params,
+        });
+      }).pipe(
       retry({
         count: environment.readRetryCount,
         delay: (error: unknown) => isTransientReadFailure(error)
           ? of(null)
           : throwError(() => error),
       }),
-      map(toResult),
+      map((response) => this.resultForCurrentScope(response, generation)),
       catchError((error: unknown) => throwError(() => toApiHttpError(error))),
-    );
+      );
+    });
   }
 
   mutate<TResponse, TBody>(
     request: ApiMutationRequest<TBody>,
   ): Observable<ApiHttpResult<TResponse>> {
-    return this.sendMutation<TResponse, TBody>(request);
+    const generation = this.scopeReset.generation();
+    return defer(() => this.sendMutation<TResponse, TBody>(
+      request,
+      undefined,
+      true,
+      generation,
+    ));
   }
 
   beginIdempotentMutation<TBody>(
@@ -218,15 +237,17 @@ export class ApiHttpClient {
       throw new Error('Invitation acceptance requires its token-safe intent helper.');
     }
 
-    return new MutationIntent(this.generateIdempotencyKey(), request);
+    return new MutationIntent(this.generateIdempotencyKey(), request, this.scopeReset.generation());
   }
 
   async beginInvitationAcceptance(
     token: string,
   ): Promise<InvitationAcceptanceIntent> {
+    const generation = this.scopeReset.generation();
     return new InvitationIntent(
       this.generateIdempotencyKey(),
       await digestInvitationToken(token),
+      generation,
     );
   }
 
@@ -240,12 +261,18 @@ export class ApiHttpClient {
     return defer(() => {
       let request: ApiMutationRequest<TBody>;
       try {
+        this.scopeReset.requireCurrent(intent.actorScopeGeneration);
         request = intent.beginAttempt();
       } catch (error: unknown) {
         return throwError(() => error);
       }
 
-      return this.sendMutation<TResponse, TBody>(request, intent.idempotencyKey, false).pipe(
+      return this.sendMutation<TResponse, TBody>(
+        request,
+        intent.idempotencyKey,
+        false,
+        intent.actorScopeGeneration,
+      ).pipe(
         tap({
           next: () => intent.recordResponse(),
           error: (error: unknown) => intent.recordError(error),
@@ -267,6 +294,7 @@ export class ApiHttpClient {
       mergeMap((tokenDigest: string) => {
         let request: ApiMutationRequest<undefined>;
         try {
+          this.scopeReset.requireCurrent(intent.actorScopeGeneration);
           request = intent.beginAttempt(token, tokenDigest);
         } catch (error: unknown) {
           return throwError(() => error);
@@ -276,6 +304,7 @@ export class ApiHttpClient {
           request,
           intent.idempotencyKey,
           false,
+          intent.actorScopeGeneration,
         ).pipe(
           tap({
             next: () => intent.recordResponse(),
@@ -291,6 +320,7 @@ export class ApiHttpClient {
     request: ApiMutationRequest<TBody>,
     idempotencyKey?: string,
     mapErrors = true,
+    actorScopeGeneration = this.scopeReset.generation(),
   ): Observable<ApiHttpResult<TResponse>> {
     let headers = new HttpHeaders();
     if (request.precondition !== undefined) {
@@ -300,11 +330,15 @@ export class ApiHttpClient {
       headers = headers.set('Idempotency-Key', idempotencyKey);
     }
 
-    const result = this.http.request<TResponse>(request.method, this.apiUrl(request.path), {
-      body: request.body,
-      headers,
-      observe: 'response',
-    }).pipe(map(toResult));
+    const result = defer(() => {
+      this.scopeReset.requireCurrent(actorScopeGeneration);
+      return this.http.request<TResponse>(request.method, this.apiUrl(request.path), {
+        body: request.body,
+        context: actorScopeContext(actorScopeGeneration),
+        headers,
+        observe: 'response',
+      });
+    }).pipe(map((response) => this.resultForCurrentScope(response, actorScopeGeneration)));
 
     return mapErrors
       ? result.pipe(catchError((error: unknown) => throwError(() => toApiHttpError(error))))
@@ -318,6 +352,18 @@ export class ApiHttpClient {
 
     return `${environment.apiBasePath}${path}`;
   }
+
+  private resultForCurrentScope<T>(
+    response: HttpResponse<T>,
+    generation: number,
+  ): ApiHttpResult<T> {
+    this.scopeReset.requireCurrent(generation);
+    return toResult(response);
+  }
+}
+
+function actorScopeContext(generation: number): HttpContext {
+  return new HttpContext().set(ACTOR_SCOPE_GENERATION, generation);
 }
 
 function snapshotMutation<TBody>(
