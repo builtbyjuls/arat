@@ -1,0 +1,8 @@
+# Dependencies
+/node_modules
+
+# Coverage, build, and local generated output
+/coverage
+/dist
+/out-tsc
+/.angular
