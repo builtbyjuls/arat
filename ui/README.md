@@ -12,11 +12,41 @@ server with npm start.
 The development server proxies /api and /v3 to the local backend at
 http://localhost:8080. The proxy is not used by production builds.
 
+## API types
+
+`openapi/arat-v1.json` is the reviewed M0-M2 contract snapshot. It is exported
+from the executable Spring contract under the explicit `test,local` profiles,
+so it includes the local-only `GET /api/v1/dev/whoami` operation. That
+operation is absent outside the local profile and is not a production API.
+
+Run `npm run generate:api-types` to generate schema types from the snapshot.
+The command does not contact a running backend and writes to the ignored
+`src/app/api/generated/` directory. Tests and builds regenerate the types
+before they run. HTTP calls remain handwritten so they can preserve status,
+ETag, Location, and correlation headers.
+
+Angular 22.2 requires the workspace's pinned TypeScript 6 release, while the
+generator currently declares a TypeScript 5 peer range. The package-specific
+npm override binds only the generator to the workspace compiler; clean type
+generation and Angular compilation verify that compatibility.
+
+From the repository root, refresh the reviewed snapshot deliberately with:
+
+```text
+./mvnw -Dit.test=OpenApiSnapshotIT \
+  -Darat.openapi.snapshot.update=true verify
+```
+
+Normal Maven verification compares the normalized local-profile contract with
+the committed snapshot and fails on drift.
+
 ## Verification
 
 Run these commands from this directory:
 
 - `npm ci` installs the exact dependency graph from the lockfile.
+- `npm run generate:api-types` generates untracked TypeScript schema types from
+  the committed snapshot without a running backend.
 - `npm run lint` checks TypeScript and Angular templates, including the
   accessibility rules.
 - `npm run test:ci` runs the Vitest suite and writes local coverage output to

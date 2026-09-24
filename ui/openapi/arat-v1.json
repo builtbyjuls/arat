@@ -1,0 +1,4910 @@
+{
+  "components" : {
+    "schemas" : {
+      "ApiProblemResponse" : {
+        "properties" : {
+          "code" : {
+            "enum" : [ "AUTHENTICATION_REQUIRED", "ACCESS_DENIED", "MALFORMED_REQUEST", "UNSUPPORTED_MEDIA_TYPE", "METHOD_NOT_ALLOWED", "ROUTE_NOT_FOUND", "VALIDATION_FAILED", "NOT_ACCEPTABLE", "INTERNAL_ERROR", "PRIVATE_RESOURCE_NOT_FOUND", "FORBIDDEN_ROLE", "FINAL_ORGANIZER_REQUIRED", "INVITATION_UNAVAILABLE", "ALREADY_MEMBER", "PRECONDITION_REQUIRED", "INVALID_PRECONDITION", "PRECONDITION_FAILED", "IDEMPOTENCY_KEY_REUSED", "INVALID_CURSOR", "INVALID_PLAN_STATE", "INVITATION_ALREADY_PENDING", "PREFERENCE_NOT_FOUND", "REQUIREMENT_VERSION_CHANGED", "ALREADY_ORGANIZER", "FORBIDDEN_PLATFORM_ROLE", "INVALID_PROVIDER_STATE", "FINALIZATION_VERSION_CHANGED", "NO_ELIGIBLE_PROVIDERS", "RECIPIENT_LIMIT_EXCEEDED", "REQUEST_DEADLINE_EXPIRED", "INVALID_REQUEST_STATE" ],
+            "type" : "string"
+          },
+          "correlationId" : {
+            "type" : "string"
+          },
+          "detail" : {
+            "type" : "string"
+          },
+          "instance" : {
+            "format" : "uri",
+            "type" : "string"
+          },
+          "status" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "title" : {
+            "type" : "string"
+          },
+          "type" : {
+            "format" : "uri",
+            "type" : "string"
+          },
+          "violations" : {
+            "items" : {
+              "$ref" : "#/components/schemas/ProblemViolation"
+            },
+            "type" : "array"
+          }
+        },
+        "type" : "object"
+      },
+      "AreaRepresentation" : {
+        "properties" : {
+          "code" : {
+            "type" : "string"
+          },
+          "radiusKm" : {
+            "format" : "int32",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "AreaRequest" : {
+        "properties" : {
+          "code" : {
+            "maxLength" : 64,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "radiusKm" : {
+            "format" : "int32",
+            "maximum" : 100,
+            "minimum" : 1,
+            "type" : "integer"
+          }
+        },
+        "required" : [ "code", "radiusKm" ],
+        "type" : "object"
+      },
+      "BudgetRepresentation" : {
+        "properties" : {
+          "currency" : {
+            "type" : "string"
+          },
+          "maximumAmount" : {
+            "type" : "string"
+          },
+          "minimumAmount" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "BudgetRequest" : {
+        "properties" : {
+          "currency" : {
+            "minLength" : 1,
+            "type" : "string"
+          },
+          "maximumAmount" : {
+            "minLength" : 1,
+            "pattern" : "(0|[1-9][0-9]{0,6})\\.[0-9]{2}",
+            "type" : "string"
+          },
+          "minimumAmount" : {
+            "minLength" : 1,
+            "pattern" : "(0|[1-9][0-9]{0,6})\\.[0-9]{2}",
+            "type" : "string"
+          }
+        },
+        "required" : [ "currency", "maximumAmount", "minimumAmount" ],
+        "type" : "object"
+      },
+      "CandidateWindowRepresentation" : {
+        "properties" : {
+          "endAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "id" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "startAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "CandidateWindowRequest" : {
+        "properties" : {
+          "endAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "startAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "required" : [ "endAt", "startAt" ],
+        "type" : "object"
+      },
+      "CreateGroupRequest" : {
+        "properties" : {
+          "description" : {
+            "maxLength" : 500,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "name" : {
+            "maxLength" : 80,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [ "name" ],
+        "type" : "object"
+      },
+      "CreateInvitationRequest" : {
+        "properties" : {
+          "expiryHours" : {
+            "format" : "int32",
+            "maximum" : 168,
+            "minimum" : 1,
+            "type" : "integer"
+          },
+          "inviteeAccountId" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        },
+        "required" : [ "inviteeAccountId" ],
+        "type" : "object"
+      },
+      "CreatePlanRequest" : {
+        "properties" : {
+          "area" : {
+            "$ref" : "#/components/schemas/AreaRequest"
+          },
+          "budget" : {
+            "$ref" : "#/components/schemas/BudgetRequest"
+          },
+          "candidateWindows" : {
+            "items" : {
+              "$ref" : "#/components/schemas/CandidateWindowRequest"
+            },
+            "maxItems" : 10,
+            "minItems" : 0,
+            "type" : "array"
+          },
+          "category" : {
+            "enum" : [ "COURT", "KTV", "GROUP_DINING" ],
+            "type" : "string"
+          },
+          "categoryAttributes" : {
+            "additionalProperties" : {
+              "oneOf" : [ {
+                "type" : "boolean"
+              }, {
+                "format" : "int32",
+                "maximum" : 1000000,
+                "minimum" : 0,
+                "type" : "integer"
+              }, {
+                "maxLength" : 120,
+                "minLength" : 1,
+                "type" : "string"
+              } ]
+            },
+            "propertyNames" : {
+              "pattern" : "[a-z][A-Za-z0-9]{0,39}",
+              "type" : "string"
+            },
+            "type" : "object"
+          },
+          "headcount" : {
+            "$ref" : "#/components/schemas/HeadcountRequest"
+          },
+          "mustHaves" : {
+            "items" : {
+              "maxLength" : 120,
+              "minLength" : 0,
+              "type" : "string"
+            },
+            "maxItems" : 20,
+            "minItems" : 0,
+            "type" : "array"
+          },
+          "providerSafeNotes" : {
+            "maxLength" : 1000,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "timeZone" : {
+            "maxLength" : 64,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "title" : {
+            "maxLength" : 120,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [ "area", "candidateWindows", "category", "categoryAttributes", "headcount", "mustHaves", "timeZone", "title" ],
+        "type" : "object"
+      },
+      "CreatePreferenceRequest" : {
+        "properties" : {
+          "attendance" : {
+            "enum" : [ "INTERESTED", "AVAILABLE", "JOINING", "NOT_JOINING" ],
+            "type" : "string"
+          },
+          "basisPlanVersion" : {
+            "format" : "int64",
+            "minimum" : 1,
+            "type" : "integer"
+          },
+          "guestCount" : {
+            "format" : "int32",
+            "maximum" : 20,
+            "minimum" : 0,
+            "type" : "integer"
+          },
+          "personalBudget" : {
+            "$ref" : "#/components/schemas/PersonalBudgetRequest"
+          },
+          "privateNote" : {
+            "maxLength" : 1000,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "rankedPreferences" : {
+            "items" : {
+              "maxLength" : 80,
+              "minLength" : 0,
+              "type" : "string"
+            },
+            "maxItems" : 10,
+            "minItems" : 0,
+            "type" : "array"
+          },
+          "selectedWindowIds" : {
+            "items" : {
+              "format" : "uuid",
+              "type" : "string"
+            },
+            "type" : "array"
+          }
+        },
+        "required" : [ "attendance", "basisPlanVersion", "guestCount", "rankedPreferences", "selectedWindowIds" ],
+        "type" : "object"
+      },
+      "CreateProviderRequest" : {
+        "properties" : {
+          "displayName" : {
+            "minLength" : 1,
+            "type" : "string"
+          },
+          "serviceAreaCodes" : {
+            "items" : {
+              "minLength" : 1,
+              "type" : "string"
+            },
+            "maxItems" : 20,
+            "minItems" : 0,
+            "type" : "array"
+          },
+          "supportedCategories" : {
+            "items" : {
+              "enum" : [ "COURT", "KTV", "GROUP_DINING" ],
+              "type" : "string"
+            },
+            "maxItems" : 10,
+            "minItems" : 0,
+            "type" : "array"
+          }
+        },
+        "required" : [ "displayName", "serviceAreaCodes", "supportedCategories" ],
+        "type" : "object"
+      },
+      "FinalizeRequirementsRequest" : {
+        "properties" : {
+          "candidateWindowId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "offerDeadline" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "required" : [ "candidateWindowId", "offerDeadline" ],
+        "type" : "object"
+      },
+      "GroupDetailRepresentation" : {
+        "properties" : {
+          "description" : {
+            "type" : "string"
+          },
+          "groupId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "members" : {
+            "items" : {
+              "$ref" : "#/components/schemas/MemberRepresentation"
+            },
+            "type" : "array"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "version" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "GroupMembershipRepresentation" : {
+        "properties" : {
+          "accountId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "groupId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "groupVersion" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "role" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "GroupPageRepresentation" : {
+        "properties" : {
+          "items" : {
+            "items" : {
+              "$ref" : "#/components/schemas/GroupSummaryRepresentation"
+            },
+            "type" : "array"
+          },
+          "nextCursor" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "GroupPreferenceRepresentation" : {
+        "properties" : {
+          "current" : {
+            "type" : "boolean"
+          },
+          "preference" : {
+            "$ref" : "#/components/schemas/PlanPreference"
+          }
+        },
+        "type" : "object"
+      },
+      "GroupPublishedRequestRepresentation" : {
+        "properties" : {
+          "actionable" : {
+            "type" : "boolean"
+          },
+          "area" : {
+            "$ref" : "#/components/schemas/AreaRepresentation"
+          },
+          "budget" : {
+            "$ref" : "#/components/schemas/BudgetRepresentation"
+          },
+          "category" : {
+            "type" : "string"
+          },
+          "categoryAttributes" : {
+            "additionalProperties" : { },
+            "type" : "object"
+          },
+          "closedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "headcount" : {
+            "$ref" : "#/components/schemas/HeadcountRepresentation"
+          },
+          "mustHaves" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "offerDeadline" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "providerSafeNotes" : {
+            "type" : "string"
+          },
+          "publishedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "requestId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "requestVersion" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "requestedWindow" : {
+            "$ref" : "#/components/schemas/WindowRepresentation"
+          },
+          "state" : {
+            "type" : "string"
+          },
+          "timeZone" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "GroupRepresentation" : {
+        "properties" : {
+          "createdAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "description" : {
+            "type" : "string"
+          },
+          "groupId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "updatedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "version" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "GroupSummaryRepresentation" : {
+        "properties" : {
+          "description" : {
+            "type" : "string"
+          },
+          "groupId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "role" : {
+            "type" : "string"
+          },
+          "version" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "HeadcountRepresentation" : {
+        "properties" : {
+          "maximum" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "minimum" : {
+            "format" : "int32",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "HeadcountRequest" : {
+        "properties" : {
+          "maximum" : {
+            "format" : "int32",
+            "maximum" : 100,
+            "minimum" : 1,
+            "type" : "integer"
+          },
+          "minimum" : {
+            "format" : "int32",
+            "maximum" : 100,
+            "minimum" : 1,
+            "type" : "integer"
+          }
+        },
+        "required" : [ "maximum", "minimum" ],
+        "type" : "object"
+      },
+      "InvitationRepresentation" : {
+        "properties" : {
+          "expiresAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "groupId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "inviteId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "inviteeAccountId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "token" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "JsonNode" : {
+        "properties" : {
+          "array" : {
+            "type" : "boolean"
+          },
+          "bigDecimal" : {
+            "type" : "boolean"
+          },
+          "bigInteger" : {
+            "type" : "boolean"
+          },
+          "binary" : {
+            "type" : "boolean"
+          },
+          "boolean" : {
+            "type" : "boolean"
+          },
+          "container" : {
+            "type" : "boolean"
+          },
+          "double" : {
+            "type" : "boolean"
+          },
+          "embeddedValue" : {
+            "type" : "boolean"
+          },
+          "empty" : {
+            "type" : "boolean"
+          },
+          "float" : {
+            "type" : "boolean"
+          },
+          "floatingPointNumber" : {
+            "type" : "boolean"
+          },
+          "int" : {
+            "type" : "boolean"
+          },
+          "integralNumber" : {
+            "type" : "boolean"
+          },
+          "long" : {
+            "type" : "boolean"
+          },
+          "missingNode" : {
+            "type" : "boolean"
+          },
+          "nodeType" : {
+            "enum" : [ "ARRAY", "BINARY", "BOOLEAN", "MISSING", "NULL", "NUMBER", "OBJECT", "POJO", "STRING" ],
+            "type" : "string"
+          },
+          "null" : {
+            "type" : "boolean"
+          },
+          "number" : {
+            "type" : "boolean"
+          },
+          "object" : {
+            "type" : "boolean"
+          },
+          "pojo" : {
+            "type" : "boolean"
+          },
+          "short" : {
+            "type" : "boolean"
+          },
+          "string" : {
+            "type" : "boolean"
+          },
+          "textual" : {
+            "deprecated" : true,
+            "type" : "boolean"
+          },
+          "valueNode" : {
+            "type" : "boolean"
+          }
+        },
+        "type" : "object"
+      },
+      "MemberRepresentation" : {
+        "properties" : {
+          "accountId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "displayName" : {
+            "type" : "string"
+          },
+          "role" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "OrganizerTransferRepresentation" : {
+        "properties" : {
+          "groupId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "groupVersion" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "organizerAccountId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "previousOrganizerAccountId" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "PendingProviderVerificationPageRepresentation" : {
+        "properties" : {
+          "items" : {
+            "items" : {
+              "$ref" : "#/components/schemas/PendingProviderVerificationRepresentation"
+            },
+            "type" : "array"
+          },
+          "nextCursor" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "PendingProviderVerificationRepresentation" : {
+        "properties" : {
+          "displayName" : {
+            "type" : "string"
+          },
+          "evidenceReferences" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "providerId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "providerVersion" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "serviceAreaCodes" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "submissionId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "submittedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "supportedCategories" : {
+            "items" : {
+              "enum" : [ "COURT", "KTV", "GROUP_DINING" ],
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "verificationStatus" : {
+            "enum" : [ "UNVERIFIED", "PENDING", "VERIFIED", "REJECTED", "SUSPENDED" ],
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "PersonalBudget" : {
+        "properties" : {
+          "amount" : {
+            "type" : "string"
+          },
+          "currency" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "PersonalBudgetRequest" : {
+        "properties" : {
+          "amount" : {
+            "minLength" : 1,
+            "pattern" : "(0|[1-9][0-9]{0,6})\\.[0-9]{2}",
+            "type" : "string"
+          },
+          "currency" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        },
+        "required" : [ "amount", "currency" ],
+        "type" : "object"
+      },
+      "PlanDetailRepresentation" : {
+        "properties" : {
+          "planId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "requirements" : {
+            "$ref" : "#/components/schemas/RequirementRepresentation"
+          },
+          "state" : {
+            "type" : "string"
+          },
+          "title" : {
+            "type" : "string"
+          },
+          "version" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "PlanPageRepresentation" : {
+        "properties" : {
+          "items" : {
+            "items" : {
+              "$ref" : "#/components/schemas/PlanSummaryRepresentation"
+            },
+            "type" : "array"
+          },
+          "nextCursor" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "PlanPreference" : {
+        "properties" : {
+          "accountId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "attendance" : {
+            "enum" : [ "INTERESTED", "AVAILABLE", "JOINING", "NOT_JOINING" ],
+            "type" : "string"
+          },
+          "basisPlanVersion" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "guestCount" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "personalBudget" : {
+            "$ref" : "#/components/schemas/PersonalBudget"
+          },
+          "privateNote" : {
+            "type" : "string"
+          },
+          "rankedPreferences" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "selectedWindowIds" : {
+            "items" : {
+              "format" : "uuid",
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "version" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "PlanRepresentation" : {
+        "properties" : {
+          "createdByAccountId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "planId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "state" : {
+            "type" : "string"
+          },
+          "version" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "PlanRequirements" : {
+        "properties" : {
+          "area" : {
+            "$ref" : "#/components/schemas/AreaRepresentation"
+          },
+          "budget" : {
+            "$ref" : "#/components/schemas/BudgetRepresentation"
+          },
+          "candidateWindows" : {
+            "items" : {
+              "$ref" : "#/components/schemas/CandidateWindowRepresentation"
+            },
+            "type" : "array"
+          },
+          "category" : {
+            "type" : "string"
+          },
+          "categoryAttributes" : {
+            "additionalProperties" : { },
+            "type" : "object"
+          },
+          "headcount" : {
+            "$ref" : "#/components/schemas/HeadcountRepresentation"
+          },
+          "mustHaves" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "providerSafeNotes" : {
+            "type" : "string"
+          },
+          "timeZone" : {
+            "type" : "string"
+          },
+          "title" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "PlanSummaryRepresentation" : {
+        "properties" : {
+          "planId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "state" : {
+            "type" : "string"
+          },
+          "title" : {
+            "type" : "string"
+          },
+          "version" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "PreferenceCollectionRepresentation" : {
+        "properties" : {
+          "items" : {
+            "items" : {
+              "$ref" : "#/components/schemas/GroupPreferenceRepresentation"
+            },
+            "type" : "array"
+          }
+        },
+        "type" : "object"
+      },
+      "ProblemViolation" : {
+        "properties" : {
+          "field" : {
+            "type" : "string"
+          },
+          "message" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ProviderDetailRepresentation" : {
+        "properties" : {
+          "callerStaffRole" : {
+            "enum" : [ "ADMIN", "STAFF" ],
+            "type" : "string"
+          },
+          "displayName" : {
+            "type" : "string"
+          },
+          "providerId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "serviceAreaCodes" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "supportedCategories" : {
+            "items" : {
+              "enum" : [ "COURT", "KTV", "GROUP_DINING" ],
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "verificationStatus" : {
+            "enum" : [ "UNVERIFIED", "PENDING", "VERIFIED", "REJECTED", "SUSPENDED" ],
+            "type" : "string"
+          },
+          "version" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "ProviderPageRepresentation" : {
+        "properties" : {
+          "items" : {
+            "items" : {
+              "$ref" : "#/components/schemas/ProviderSummaryRepresentation"
+            },
+            "type" : "array"
+          },
+          "nextCursor" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ProviderRepresentation" : {
+        "properties" : {
+          "displayName" : {
+            "type" : "string"
+          },
+          "providerId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "serviceAreaCodes" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "supportedCategories" : {
+            "items" : {
+              "enum" : [ "COURT", "KTV", "GROUP_DINING" ],
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "verificationStatus" : {
+            "enum" : [ "UNVERIFIED", "PENDING", "VERIFIED", "REJECTED", "SUSPENDED" ],
+            "type" : "string"
+          },
+          "version" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "ProviderRequestFeedRepresentation" : {
+        "properties" : {
+          "items" : {
+            "items" : {
+              "$ref" : "#/components/schemas/PublishedRequestRepresentation"
+            },
+            "type" : "array"
+          },
+          "nextCursor" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ProviderRestorationRepresentation" : {
+        "properties" : {
+          "eligibilityVersion" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "providerId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "providerVersion" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "verificationStatus" : {
+            "enum" : [ "UNVERIFIED", "PENDING", "VERIFIED", "REJECTED", "SUSPENDED" ],
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ProviderSummaryRepresentation" : {
+        "properties" : {
+          "callerStaffRole" : {
+            "enum" : [ "ADMIN", "STAFF" ],
+            "type" : "string"
+          },
+          "displayName" : {
+            "type" : "string"
+          },
+          "providerId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "serviceAreaCodes" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "supportedCategories" : {
+            "items" : {
+              "enum" : [ "COURT", "KTV", "GROUP_DINING" ],
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "verificationStatus" : {
+            "enum" : [ "UNVERIFIED", "PENDING", "VERIFIED", "REJECTED", "SUSPENDED" ],
+            "type" : "string"
+          },
+          "version" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "ProviderSuspensionRepresentation" : {
+        "properties" : {
+          "eligibilityVersion" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "providerId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "providerVersion" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "reason" : {
+            "type" : "string"
+          },
+          "suspensionId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "verificationStatus" : {
+            "enum" : [ "UNVERIFIED", "PENDING", "VERIFIED", "REJECTED", "SUSPENDED" ],
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ProviderSuspensionRequest" : {
+        "properties" : {
+          "reason" : {
+            "maxLength" : 500,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [ "reason" ],
+        "type" : "object"
+      },
+      "ProviderVerificationDecisionRepresentation" : {
+        "properties" : {
+          "decision" : {
+            "enum" : [ "ACCEPT", "REJECT" ],
+            "type" : "string"
+          },
+          "decisionId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "eligibilityVersion" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "note" : {
+            "type" : "string"
+          },
+          "providerId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "providerVersion" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "submissionId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "verificationStatus" : {
+            "enum" : [ "UNVERIFIED", "PENDING", "VERIFIED", "REJECTED", "SUSPENDED" ],
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ProviderVerificationDecisionRequest" : {
+        "properties" : {
+          "decision" : {
+            "enum" : [ "ACCEPT", "REJECT" ],
+            "type" : "string"
+          },
+          "note" : {
+            "maxLength" : 500,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "submissionId" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        },
+        "required" : [ "decision", "submissionId" ],
+        "type" : "object"
+      },
+      "ProviderVerificationSubmissionRepresentation" : {
+        "properties" : {
+          "evidenceCount" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "providerId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "providerVersion" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "submissionId" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "PublishRequest" : {
+        "properties" : {
+          "finalizationId" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        },
+        "required" : [ "finalizationId" ],
+        "type" : "object"
+      },
+      "PublishedRequestPageRepresentation" : {
+        "properties" : {
+          "items" : {
+            "items" : {
+              "$ref" : "#/components/schemas/GroupPublishedRequestRepresentation"
+            },
+            "type" : "array"
+          },
+          "nextCursor" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "PublishedRequestRepresentation" : {
+        "properties" : {
+          "actionable" : {
+            "type" : "boolean"
+          },
+          "area" : {
+            "$ref" : "#/components/schemas/AreaRepresentation"
+          },
+          "budget" : {
+            "$ref" : "#/components/schemas/BudgetRepresentation"
+          },
+          "category" : {
+            "type" : "string"
+          },
+          "categoryAttributes" : {
+            "additionalProperties" : { },
+            "type" : "object"
+          },
+          "headcount" : {
+            "$ref" : "#/components/schemas/HeadcountRepresentation"
+          },
+          "mustHaves" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "offerDeadline" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "providerSafeNotes" : {
+            "type" : "string"
+          },
+          "publishedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "requestId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "requestVersion" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "requestedWindow" : {
+            "$ref" : "#/components/schemas/WindowRepresentation"
+          },
+          "state" : {
+            "type" : "string"
+          },
+          "timeZone" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "RequirementFinalization" : {
+        "properties" : {
+          "area" : {
+            "$ref" : "#/components/schemas/AreaRepresentation"
+          },
+          "basisPlanVersion" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "budget" : {
+            "$ref" : "#/components/schemas/BudgetRepresentation"
+          },
+          "candidateWindowId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "category" : {
+            "type" : "string"
+          },
+          "categoryAttributes" : {
+            "additionalProperties" : { },
+            "type" : "object"
+          },
+          "currentBasis" : {
+            "type" : "boolean"
+          },
+          "currentPreferenceCount" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "finalizationId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "headcount" : {
+            "$ref" : "#/components/schemas/HeadcountRepresentation"
+          },
+          "mustHaves" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "offerDeadline" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "providerSafeNotes" : {
+            "type" : "string"
+          },
+          "selectedEndAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "selectedStartAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "stalePreferenceCount" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "timeZone" : {
+            "type" : "string"
+          },
+          "warnings" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          }
+        },
+        "type" : "object"
+      },
+      "RequirementFinalizationPageRepresentation" : {
+        "properties" : {
+          "items" : {
+            "items" : {
+              "$ref" : "#/components/schemas/RequirementFinalization"
+            },
+            "type" : "array"
+          },
+          "nextCursor" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "RequirementReplacementCandidateWindow" : {
+        "properties" : {
+          "endAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "id" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "startAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "required" : [ "endAt", "startAt" ],
+        "type" : "object"
+      },
+      "RequirementReplacementRequest" : {
+        "properties" : {
+          "area" : {
+            "$ref" : "#/components/schemas/AreaRequest"
+          },
+          "budget" : {
+            "$ref" : "#/components/schemas/BudgetRequest"
+          },
+          "candidateWindows" : {
+            "items" : {
+              "$ref" : "#/components/schemas/RequirementReplacementCandidateWindow"
+            },
+            "maxItems" : 10,
+            "minItems" : 0,
+            "type" : "array"
+          },
+          "category" : {
+            "enum" : [ "COURT", "KTV", "GROUP_DINING" ],
+            "type" : "string"
+          },
+          "categoryAttributes" : {
+            "additionalProperties" : {
+              "oneOf" : [ {
+                "type" : "boolean"
+              }, {
+                "format" : "int32",
+                "maximum" : 1000000,
+                "minimum" : 0,
+                "type" : "integer"
+              }, {
+                "maxLength" : 120,
+                "minLength" : 1,
+                "type" : "string"
+              } ]
+            },
+            "propertyNames" : {
+              "pattern" : "[a-z][A-Za-z0-9]{0,39}",
+              "type" : "string"
+            },
+            "type" : "object"
+          },
+          "headcount" : {
+            "$ref" : "#/components/schemas/HeadcountRequest"
+          },
+          "mustHaves" : {
+            "items" : {
+              "maxLength" : 120,
+              "minLength" : 0,
+              "type" : "string"
+            },
+            "maxItems" : 20,
+            "minItems" : 0,
+            "type" : "array"
+          },
+          "providerSafeNotes" : {
+            "maxLength" : 1000,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "timeZone" : {
+            "maxLength" : 64,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "title" : {
+            "maxLength" : 120,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [ "area", "candidateWindows", "category", "categoryAttributes", "headcount", "mustHaves", "timeZone", "title" ],
+        "type" : "object"
+      },
+      "RequirementRepresentation" : {
+        "properties" : {
+          "area" : {
+            "$ref" : "#/components/schemas/AreaRepresentation"
+          },
+          "budget" : {
+            "$ref" : "#/components/schemas/BudgetRepresentation"
+          },
+          "candidateWindows" : {
+            "items" : {
+              "$ref" : "#/components/schemas/CandidateWindowRepresentation"
+            },
+            "type" : "array"
+          },
+          "category" : {
+            "type" : "string"
+          },
+          "categoryAttributes" : {
+            "additionalProperties" : { },
+            "type" : "object"
+          },
+          "headcount" : {
+            "$ref" : "#/components/schemas/HeadcountRepresentation"
+          },
+          "mustHaves" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "providerSafeNotes" : {
+            "type" : "string"
+          },
+          "timeZone" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "SubmitProviderVerificationRequest" : {
+        "properties" : {
+          "evidenceReferences" : {
+            "items" : {
+              "maxLength" : 256,
+              "minLength" : 1,
+              "type" : "string"
+            },
+            "maxItems" : 10,
+            "minItems" : 1,
+            "type" : "array"
+          }
+        },
+        "required" : [ "evidenceReferences" ],
+        "type" : "object"
+      },
+      "TransferOrganizerRequest" : {
+        "properties" : {
+          "targetAccountId" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        },
+        "required" : [ "targetAccountId" ],
+        "type" : "object"
+      },
+      "WhoAmIResponse" : {
+        "properties" : {
+          "actorId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "platformRoles" : {
+            "items" : {
+              "enum" : [ "PLATFORM_OPERATOR" ],
+              "type" : "string"
+            },
+            "type" : "array",
+            "uniqueItems" : true
+          }
+        },
+        "type" : "object"
+      },
+      "WindowRepresentation" : {
+        "properties" : {
+          "endAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "startAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      }
+    },
+    "securitySchemes" : {
+      "bearerAuth" : {
+        "bearerFormat" : "Bearer",
+        "scheme" : "bearer",
+        "type" : "http"
+      }
+    }
+  },
+  "info" : {
+    "title" : "Arat API",
+    "version" : "v1"
+  },
+  "openapi" : "3.1.0",
+  "paths" : {
+    "/api/v1/dev/whoami" : {
+      "get" : {
+        "operationId" : "whoami",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/WhoAmIResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "local-development-controller" ]
+      }
+    },
+    "/api/v1/group-invites/{token}/accept" : {
+      "post" : {
+        "operationId" : "acceptGroupInvitation",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "token",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "Idempotency-Key",
+          "required" : true,
+          "schema" : {
+            "maxLength" : 255,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/GroupMembershipRepresentation"
+                }
+              }
+            },
+            "description" : "Invitation accepted",
+            "headers" : {
+              "ETag" : {
+                "description" : "Current group version",
+                "style" : "simple"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Missing or malformed request"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Authentication required"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Invitation unavailable"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Idempotency key reused"
+          },
+          "422" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Validation failed"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Accept an account-bound group invitation",
+        "tags" : [ "Groups" ]
+      }
+    },
+    "/api/v1/groups" : {
+      "get" : {
+        "operationId" : "listGroups",
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "cursor",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "limit",
+          "required" : false,
+          "schema" : {
+            "format" : "int32",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/GroupPageRepresentation"
+                }
+              }
+            },
+            "description" : "Current actor's private group page"
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Invalid cursor or limit"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Authentication required"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "List the current actor's private groups",
+        "tags" : [ "Groups" ]
+      },
+      "post" : {
+        "operationId" : "createGroup",
+        "parameters" : [ {
+          "in" : "header",
+          "name" : "Idempotency-Key",
+          "required" : true,
+          "schema" : {
+            "maxLength" : 255,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreateGroupRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/GroupRepresentation"
+                }
+              }
+            },
+            "description" : "Group created",
+            "headers" : {
+              "ETag" : {
+                "description" : "Current group version",
+                "style" : "simple"
+              },
+              "Location" : {
+                "description" : "Created group location",
+                "style" : "simple"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Missing or malformed request"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Authentication required"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Idempotency key reused"
+          },
+          "422" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Validation failed"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Create a private group",
+        "tags" : [ "Groups" ]
+      }
+    },
+    "/api/v1/groups/{groupId}" : {
+      "get" : {
+        "operationId" : "readGroup",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "groupId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/GroupDetailRepresentation"
+                }
+              }
+            },
+            "description" : "Private group details",
+            "headers" : {
+              "ETag" : {
+                "description" : "Current group version",
+                "style" : "simple"
+              }
+            }
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Authentication required"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Private resource not found"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Read private group details",
+        "tags" : [ "Groups" ]
+      }
+    },
+    "/api/v1/groups/{groupId}/invites" : {
+      "post" : {
+        "operationId" : "createGroupInvitation",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "groupId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "Idempotency-Key",
+          "required" : true,
+          "schema" : {
+            "maxLength" : 255,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreateInvitationRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/InvitationRepresentation"
+                }
+              }
+            },
+            "description" : "Invitation created",
+            "headers" : {
+              "Location" : {
+                "description" : "Created invitation location",
+                "style" : "simple"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Missing or malformed request"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Authentication required"
+          },
+          "403" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Organizer role required"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Private resource not found"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Invitation conflict"
+          },
+          "422" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Validation failed"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Create an account-bound group invitation",
+        "tags" : [ "Groups" ]
+      }
+    },
+    "/api/v1/groups/{groupId}/invites/{inviteId}" : {
+      "delete" : {
+        "operationId" : "revokeGroupInvitation",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "groupId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "inviteId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "Idempotency-Key",
+          "required" : true,
+          "schema" : {
+            "maxLength" : 255,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "Invitation revoked"
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Missing or malformed request"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Authentication required"
+          },
+          "403" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Organizer role required"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Private resource or invitation unavailable"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Idempotency key reused"
+          },
+          "422" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Validation failed"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Revoke an unused group invitation",
+        "tags" : [ "Groups" ]
+      }
+    },
+    "/api/v1/groups/{groupId}/members/me" : {
+      "delete" : {
+        "operationId" : "leaveGroup",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "groupId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "Idempotency-Key",
+          "required" : true,
+          "schema" : {
+            "maxLength" : 255,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "Member left",
+            "headers" : {
+              "ETag" : {
+                "description" : "New group version",
+                "style" : "simple"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Missing or malformed request"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Authentication required"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Private resource not found"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Final organizer or idempotency conflict"
+          },
+          "422" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Validation failed"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Leave a private group",
+        "tags" : [ "Groups" ]
+      }
+    },
+    "/api/v1/groups/{groupId}/members/{accountId}" : {
+      "delete" : {
+        "operationId" : "removeGroupMember",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "groupId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "accountId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "Idempotency-Key",
+          "required" : true,
+          "schema" : {
+            "maxLength" : 255,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "Member removed",
+            "headers" : {
+              "ETag" : {
+                "description" : "New group version",
+                "style" : "simple"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Missing or malformed request"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Authentication required"
+          },
+          "403" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Organizer role required"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Private resource not found"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Final organizer or idempotency conflict"
+          },
+          "422" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Self target is invalid"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Remove a member from a private group",
+        "tags" : [ "Groups" ]
+      }
+    },
+    "/api/v1/groups/{groupId}/organizer-transfer" : {
+      "post" : {
+        "operationId" : "transferGroupOrganizer",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "groupId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "If-Match",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "Idempotency-Key",
+          "required" : true,
+          "schema" : {
+            "maxLength" : 255,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/TransferOrganizerRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/OrganizerTransferRepresentation"
+                }
+              }
+            },
+            "description" : "Organizer authority transferred",
+            "headers" : {
+              "ETag" : {
+                "description" : "New group version",
+                "style" : "simple"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Malformed precondition or request"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Authentication required"
+          },
+          "403" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Organizer role required"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Private resource not found"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Organizer target or idempotency conflict"
+          },
+          "412" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Group version precondition failed"
+          },
+          "422" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Validation failed"
+          },
+          "428" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "If-Match required"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Transfer organizer authority",
+        "tags" : [ "Groups" ]
+      }
+    },
+    "/api/v1/groups/{groupId}/plans" : {
+      "get" : {
+        "operationId" : "listPlans",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "groupId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "cursor",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "limit",
+          "required" : false,
+          "schema" : {
+            "format" : "int32",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PlanPageRepresentation"
+                }
+              }
+            },
+            "description" : "Private plan page"
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Invalid cursor or limit"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Authentication required"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Private resource not found"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "List private group plans",
+        "tags" : [ "Plans" ]
+      },
+      "post" : {
+        "operationId" : "createCollaborativePlan",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "groupId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "Idempotency-Key",
+          "required" : true,
+          "schema" : {
+            "maxLength" : 255,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreatePlanRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PlanRepresentation"
+                }
+              }
+            },
+            "description" : "Collaborative plan created",
+            "headers" : {
+              "ETag" : {
+                "description" : "Current plan version",
+                "style" : "simple"
+              },
+              "Location" : {
+                "description" : "Created plan location",
+                "style" : "simple"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Missing or malformed request"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Authentication required"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Private resource not found"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Idempotency key reused"
+          },
+          "422" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Validation failed"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Create a collaborative plan",
+        "tags" : [ "Plans" ]
+      }
+    },
+    "/api/v1/operations/providers/pending-verifications" : {
+      "get" : {
+        "operationId" : "listPendingProviderVerifications",
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "cursor",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "limit",
+          "required" : false,
+          "schema" : {
+            "format" : "int32",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PendingProviderVerificationPageRepresentation"
+                }
+              }
+            },
+            "description" : "Pending provider verification page"
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Invalid cursor or limit"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Authentication required"
+          },
+          "403" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Platform operator role required"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "List pending provider verifications",
+        "tags" : [ "Provider Operations" ]
+      }
+    },
+    "/api/v1/operations/providers/{providerId}/restoration" : {
+      "post" : {
+        "operationId" : "restoreProvider",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "providerId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "Idempotency-Key",
+          "required" : true,
+          "schema" : {
+            "maxLength" : 255,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProviderRestorationRepresentation"
+                }
+              }
+            },
+            "description" : "Provider restored",
+            "headers" : {
+              "ETag" : {
+                "description" : "Current provider version",
+                "style" : "simple"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Missing or malformed request"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Authentication required"
+          },
+          "403" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Platform operator role required"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Private resource not found"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Provider state conflict or idempotency key reused"
+          },
+          "422" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Validation failed"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Restore a suspended provider",
+        "tags" : [ "Provider Operations" ]
+      }
+    },
+    "/api/v1/operations/providers/{providerId}/suspension" : {
+      "post" : {
+        "operationId" : "suspendProvider",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "providerId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "Idempotency-Key",
+          "required" : true,
+          "schema" : {
+            "maxLength" : 255,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ProviderSuspensionRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProviderSuspensionRepresentation"
+                }
+              }
+            },
+            "description" : "Provider suspended",
+            "headers" : {
+              "ETag" : {
+                "description" : "Current provider version",
+                "style" : "simple"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Missing or malformed request"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Authentication required"
+          },
+          "403" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Platform operator role required"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Private resource not found"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Provider state conflict or idempotency key reused"
+          },
+          "422" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Validation failed"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Suspend a verified provider",
+        "tags" : [ "Provider Operations" ]
+      }
+    },
+    "/api/v1/operations/providers/{providerId}/verification-decisions" : {
+      "post" : {
+        "operationId" : "decideProviderVerification",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "providerId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "Idempotency-Key",
+          "required" : true,
+          "schema" : {
+            "maxLength" : 255,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ProviderVerificationDecisionRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProviderVerificationDecisionRepresentation"
+                }
+              }
+            },
+            "description" : "Provider verification decided",
+            "headers" : {
+              "ETag" : {
+                "description" : "Current provider version",
+                "style" : "simple"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Missing or malformed request"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Authentication required"
+          },
+          "403" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Platform operator role required"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Private resource not found"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Provider state conflict or idempotency key reused"
+          },
+          "422" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Validation failed"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Accept or reject a provider verification submission",
+        "tags" : [ "Provider Operations" ]
+      }
+    },
+    "/api/v1/plans/{planId}" : {
+      "get" : {
+        "operationId" : "readPlan",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "planId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PlanDetailRepresentation"
+                }
+              }
+            },
+            "description" : "Private plan details",
+            "headers" : {
+              "ETag" : {
+                "description" : "Current plan version",
+                "style" : "simple"
+              }
+            }
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Authentication required"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Private resource not found"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Read private plan details",
+        "tags" : [ "Plans" ]
+      }
+    },
+    "/api/v1/plans/{planId}/cancellation" : {
+      "post" : {
+        "operationId" : "cancelCollaborativePlan",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "planId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "Idempotency-Key",
+          "required" : true,
+          "schema" : {
+            "maxLength" : 255,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "If-Match",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PlanRepresentation"
+                }
+              }
+            },
+            "description" : "Plan cancelled",
+            "headers" : {
+              "ETag" : {
+                "description" : "Cancelled plan version",
+                "style" : "simple"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Malformed request or precondition"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Authentication required"
+          },
+          "403" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Organizer role required"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Private resource not found"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Idempotency key reused or invalid plan state"
+          },
+          "412" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Plan version precondition failed"
+          },
+          "422" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Validation failed"
+          },
+          "428" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Plan version precondition required"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Cancel a plan",
+        "tags" : [ "Plans" ]
+      }
+    },
+    "/api/v1/plans/{planId}/members/me/preference" : {
+      "get" : {
+        "operationId" : "readOwnMemberPreference",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "planId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PlanPreference"
+                }
+              }
+            },
+            "description" : "Member preference",
+            "headers" : {
+              "ETag" : {
+                "description" : "Current preference version",
+                "style" : "simple"
+              }
+            }
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Authentication required"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Private resource or preference not found"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Read own member preference",
+        "tags" : [ "Plans" ]
+      },
+      "put" : {
+        "description" : "Use exactly one precondition: If-None-Match: * for creation or If-Match with the quoted preference ETag for replacement.",
+        "operationId" : "putMemberPreference",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "planId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "description" : "Use * only when creating a preference.",
+          "in" : "header",
+          "name" : "If-None-Match",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Use the quoted preference ETag only when replacing a preference.",
+          "in" : "header",
+          "name" : "If-Match",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreatePreferenceRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PlanPreference"
+                }
+              }
+            },
+            "description" : "Preference replaced",
+            "headers" : {
+              "ETag" : {
+                "description" : "New preference version",
+                "style" : "simple"
+              }
+            }
+          },
+          "201" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PlanPreference"
+                }
+              }
+            },
+            "description" : "Preference created",
+            "headers" : {
+              "ETag" : {
+                "description" : "Current preference version",
+                "style" : "simple"
+              },
+              "Location" : {
+                "description" : "Created preference location",
+                "style" : "simple"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Malformed request or precondition"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Authentication required"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Private resource not found"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Plan state or requirement version changed"
+          },
+          "412" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Preference version precondition failed"
+          },
+          "422" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Validation failed"
+          },
+          "428" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Exactly one preference precondition required"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Create or replace a member preference",
+        "tags" : [ "Plans" ]
+      }
+    },
+    "/api/v1/plans/{planId}/preferences" : {
+      "get" : {
+        "operationId" : "listPlanPreferences",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "planId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PreferenceCollectionRepresentation"
+                }
+              }
+            },
+            "description" : "Group-visible preferences"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Authentication required"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Private resource not found"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "List group-visible plan preferences",
+        "tags" : [ "Plans" ]
+      }
+    },
+    "/api/v1/plans/{planId}/published-requests" : {
+      "get" : {
+        "operationId" : "listGroupPublishedRequestHistory",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "planId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "cursor",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "limit",
+          "required" : false,
+          "schema" : {
+            "format" : "int32",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PublishedRequestPageRepresentation"
+                }
+              }
+            },
+            "description" : "Provider request history"
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Invalid cursor or limit"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Authentication required"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Private resource not found"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "List group provider request history",
+        "tags" : [ "Published requests" ]
+      },
+      "post" : {
+        "operationId" : "publishProviderRequest",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "planId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "Idempotency-Key",
+          "required" : true,
+          "schema" : {
+            "maxLength" : 255,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "If-Match",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/PublishRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PublishedRequestRepresentation"
+                }
+              }
+            },
+            "description" : "Provider request published",
+            "headers" : {
+              "ETag" : {
+                "description" : "New plan version",
+                "style" : "simple"
+              },
+              "Location" : {
+                "description" : "Published request resource",
+                "style" : "simple"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Malformed request or precondition"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Authentication required"
+          },
+          "403" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Organizer role required"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Private resource not found"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Publication conflict"
+          },
+          "412" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Plan version precondition failed"
+          },
+          "422" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Validation failed"
+          },
+          "428" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Plan version precondition required"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Publish a provider request",
+        "tags" : [ "Published requests" ]
+      }
+    },
+    "/api/v1/plans/{planId}/published-requests/current" : {
+      "get" : {
+        "operationId" : "readCurrentGroupPublishedRequest",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "planId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/GroupPublishedRequestRepresentation"
+                }
+              }
+            },
+            "description" : "Current provider request"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Authentication required"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Private resource not found"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Read the current group provider request",
+        "tags" : [ "Published requests" ]
+      }
+    },
+    "/api/v1/plans/{planId}/published-requests/{requestId}" : {
+      "get" : {
+        "operationId" : "readGroupPublishedRequestHistoryItem",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "planId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "requestId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/GroupPublishedRequestRepresentation"
+                }
+              }
+            },
+            "description" : "Provider request version"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Authentication required"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Private resource not found"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Read a group provider request version",
+        "tags" : [ "Published requests" ]
+      }
+    },
+    "/api/v1/plans/{planId}/requirement-finalization" : {
+      "post" : {
+        "operationId" : "finalizePlanRequirements",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "planId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "Idempotency-Key",
+          "required" : true,
+          "schema" : {
+            "maxLength" : 255,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "If-Match",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/FinalizeRequirementsRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RequirementFinalization"
+                }
+              }
+            },
+            "description" : "Requirements finalized",
+            "headers" : {
+              "ETag" : {
+                "description" : "Unchanged plan version",
+                "style" : "simple"
+              },
+              "Location" : {
+                "description" : "Finalization resource",
+                "style" : "simple"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Malformed request or precondition"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Authentication required"
+          },
+          "403" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Organizer role required"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Private resource not found"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Idempotency key reused or invalid plan state"
+          },
+          "412" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Plan version precondition failed"
+          },
+          "422" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Validation failed"
+          },
+          "428" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Plan version precondition required"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Finalize provider-publishable requirements",
+        "tags" : [ "Plans" ]
+      }
+    },
+    "/api/v1/plans/{planId}/requirement-finalizations" : {
+      "get" : {
+        "operationId" : "listRequirementFinalizations",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "planId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "cursor",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "limit",
+          "required" : false,
+          "schema" : {
+            "format" : "int32",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RequirementFinalizationPageRepresentation"
+                }
+              }
+            },
+            "description" : "Requirement finalization history"
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Invalid cursor or limit"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Authentication required"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Private resource not found"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "List private requirement finalizations",
+        "tags" : [ "Plans" ]
+      }
+    },
+    "/api/v1/plans/{planId}/requirements" : {
+      "put" : {
+        "operationId" : "replacePlanRequirements",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "planId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "If-Match",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/RequirementReplacementRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PlanRequirements"
+                }
+              }
+            },
+            "description" : "Requirements replaced",
+            "headers" : {
+              "ETag" : {
+                "description" : "Current plan version",
+                "style" : "simple"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Malformed request or precondition"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Authentication required"
+          },
+          "403" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Organizer role required"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Private resource not found"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Plan does not allow collaboration"
+          },
+          "412" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Plan version precondition failed"
+          },
+          "422" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Validation failed"
+          },
+          "428" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Plan version precondition required"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Replace collaborative plan requirements",
+        "tags" : [ "Plans" ]
+      }
+    },
+    "/api/v1/providers" : {
+      "get" : {
+        "operationId" : "listProviders",
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "cursor",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "limit",
+          "required" : false,
+          "schema" : {
+            "format" : "int32",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProviderPageRepresentation"
+                }
+              }
+            },
+            "description" : "Current actor's active provider staff page"
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Invalid cursor or limit"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Authentication required"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "List the current actor's provider workspaces",
+        "tags" : [ "Providers" ]
+      },
+      "post" : {
+        "operationId" : "createProvider",
+        "parameters" : [ {
+          "in" : "header",
+          "name" : "Idempotency-Key",
+          "required" : true,
+          "schema" : {
+            "maxLength" : 255,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreateProviderRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProviderRepresentation"
+                }
+              }
+            },
+            "description" : "Provider organization created",
+            "headers" : {
+              "ETag" : {
+                "description" : "Current provider version",
+                "style" : "simple"
+              },
+              "Location" : {
+                "description" : "Created provider location",
+                "style" : "simple"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Missing or malformed request"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Authentication required"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Idempotency key reused"
+          },
+          "422" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Validation failed"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Create a provider organization",
+        "tags" : [ "Providers" ]
+      }
+    },
+    "/api/v1/providers/{providerId}" : {
+      "get" : {
+        "operationId" : "readProvider",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "providerId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProviderDetailRepresentation"
+                }
+              }
+            },
+            "description" : "Provider organization",
+            "headers" : {
+              "ETag" : {
+                "description" : "Current provider version",
+                "style" : "simple"
+              }
+            }
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Authentication required"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Private resource not found"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Read a provider organization",
+        "tags" : [ "Providers" ]
+      }
+    },
+    "/api/v1/providers/{providerId}/profile" : {
+      "put" : {
+        "operationId" : "replaceProviderProfile",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "providerId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "If-Match",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreateProviderRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProviderRepresentation"
+                }
+              }
+            },
+            "description" : "Provider profile replaced",
+            "headers" : {
+              "ETag" : {
+                "description" : "Current provider version",
+                "style" : "simple"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Malformed request or precondition"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Authentication required"
+          },
+          "403" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Administrator role required"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Private resource not found"
+          },
+          "412" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Provider version precondition failed"
+          },
+          "422" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Validation failed"
+          },
+          "428" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Provider version precondition required"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Replace a provider organization profile",
+        "tags" : [ "Providers" ]
+      }
+    },
+    "/api/v1/providers/{providerId}/published-requests/{requestId}" : {
+      "get" : {
+        "operationId" : "readProviderPublishedRequest",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "providerId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "requestId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PublishedRequestRepresentation"
+                }
+              }
+            },
+            "description" : "Provider request"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Authentication required"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Private resource not found"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Read a provider request",
+        "tags" : [ "Published requests" ]
+      }
+    },
+    "/api/v1/providers/{providerId}/request-feed" : {
+      "get" : {
+        "operationId" : "listProviderRequestFeed",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "providerId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "cursor",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "limit",
+          "required" : false,
+          "schema" : {
+            "format" : "int32",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProviderRequestFeedRepresentation"
+                }
+              }
+            },
+            "description" : "Provider request feed"
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Invalid cursor or limit"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Authentication required"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Private resource not found"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "List provider requests",
+        "tags" : [ "Published requests" ]
+      }
+    },
+    "/api/v1/providers/{providerId}/verification-submissions" : {
+      "post" : {
+        "operationId" : "submitProviderVerification",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "providerId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "Idempotency-Key",
+          "required" : true,
+          "schema" : {
+            "maxLength" : 255,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/SubmitProviderVerificationRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProviderVerificationSubmissionRepresentation"
+                }
+              }
+            },
+            "description" : "Verification evidence submitted",
+            "headers" : {
+              "ETag" : {
+                "description" : "Current provider version",
+                "style" : "simple"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Missing or malformed request"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Authentication required"
+          },
+          "403" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Administrator role required"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Private resource not found"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Provider state conflict or idempotency key reused"
+          },
+          "422" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Validation failed"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Submit provider verification evidence",
+        "tags" : [ "Providers" ]
+      }
+    },
+    "/api/v1/published-requests/{requestId}/closure" : {
+      "post" : {
+        "operationId" : "closeProviderRequest",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "requestId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "Idempotency-Key",
+          "required" : true,
+          "schema" : {
+            "maxLength" : 255,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "If-Match",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PublishedRequestRepresentation"
+                }
+              }
+            },
+            "description" : "Provider request closed",
+            "headers" : {
+              "ETag" : {
+                "description" : "New plan version",
+                "style" : "simple"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Malformed request or precondition"
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Authentication required"
+          },
+          "403" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Organizer role required"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Private resource not found"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Request is not open or idempotency key was reused"
+          },
+          "412" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Plan version precondition failed"
+          },
+          "422" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Validation failed"
+          },
+          "428" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiProblemResponse"
+                }
+              }
+            },
+            "description" : "Plan version precondition required"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Close a provider request",
+        "tags" : [ "Published requests" ]
+      }
+    }
+  },
+  "servers" : [ {
+    "description" : "Generated server url",
+    "url" : "http://localhost"
+  } ]
+}

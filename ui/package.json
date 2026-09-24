@@ -4,9 +4,13 @@
   "scripts": {
     "ng": "ng",
     "start": "ng serve --configuration development",
+    "generate:api-types": "openapi-typescript openapi/arat-v1.json -o src/app/api/generated/arat-api.ts",
+    "prebuild": "npm run generate:api-types",
     "build": "ng build",
     "lint": "ng lint",
+    "pretest": "npm run generate:api-types",
     "test": "ng test --watch=false",
+    "pretest:ci": "npm run generate:api-types",
     "test:ci": "ng test --watch=false --coverage",
     "check": "npm run lint && npm run test:ci && npm run build"
   },
@@ -38,8 +42,14 @@
     "angular-eslint": "22.5.0",
     "eslint": "10.11.0",
     "jsdom": "30.0.0",
+    "openapi-typescript": "7.13.0",
     "typescript": "6.0.2",
     "typescript-eslint": "8.70.1",
     "vitest": "5.0.1"
+  },
+  "overrides": {
+    "openapi-typescript": {
+      "typescript": "$typescript"
+    }
   }
 }

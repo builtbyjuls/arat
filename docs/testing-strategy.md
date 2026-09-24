@@ -121,7 +121,7 @@ UI1 requires the following evidence before its status becomes implemented:
 | Lane | Required evidence |
 | --- | --- |
 | Backend | Focused PostgreSQL Testcontainers tests for discovery privacy, roles, bounded stable pagination, indexed query plans, finalization basis, and exact pending submissions; normal `./mvnw clean verify` regression lane |
-| Contract | Checked-in executable OpenAPI snapshot, including local identity probe; deterministic untracked TypeScript generation and drift detection against the running backend |
+| Contract | Checked-in executable OpenAPI snapshot, including local identity probe; deterministic untracked TypeScript generation and drift detection against the in-process local-profile contract |
 | Frontend | Independent npm install, lint, Vitest unit/component tests, normal production and local-demo builds; no fake tokens or actor selector in production output |
 | HTTP | Exact headers, response metadata, first-write/stale ETags, same-intent transport retry, duplicate clicks, key misuse, original replay versus fresh state, safe malformed/unknown Problem Details |
 | Identity/privacy | Probe before rendering, direct reload and server rediscovery, actor-switch and late-response isolation, 401/403/private 404 handling, token-free history/storage, no private provider fields or evidence leakage |
