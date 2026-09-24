@@ -1,0 +1,25 @@
+<a class="skip-link" href="#main-content" (click)="skipToContent($event)">Skip to main content</a>
+
+<header class="site-header">
+  <div class="header-content">
+    <a class="site-name" routerLink="/">Arat</a>
+    <ng-content select="[shell-context]" />
+    <nav aria-label="Primary navigation">
+      <a routerLink="/groups" routerLinkActive="active">Groups</a>
+      <a routerLink="/invitations/accept" routerLinkActive="active">Join group</a>
+      <a routerLink="/providers" routerLinkActive="active">Providers</a>
+      <a routerLink="/operations/provider-verifications" routerLinkActive="active">Review</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main-content" class="page-content" tabindex="-1">
+  @if (showRoute()) {
+    <router-outlet />
+  } @else {
+    <section aria-labelledby="identity-unavailable-heading">
+      <h1 id="identity-unavailable-heading" data-route-heading tabindex="-1">Local actor unavailable</h1>
+      <p>Choose and verify a local actor before opening private information.</p>
+    </section>
+  }
+</main>

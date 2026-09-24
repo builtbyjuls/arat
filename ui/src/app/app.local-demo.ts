@@ -1,9 +1,9 @@
 import { Component, OnInit, computed, inject } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
 import { LocalActorSession, unavailableMessage } from './identity/local-actor-session.service';
+import { AppShellComponent } from './shell/app-shell.component';
 
 @Component({
-  imports: [RouterOutlet],
+  imports: [AppShellComponent],
   selector: 'app-root',
   styleUrl: './app.local-demo.scss',
   templateUrl: './app.local-demo.html',

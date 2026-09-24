@@ -1,0 +1,13 @@
+<section class="view-state" [attr.role]="content().role" [attr.aria-live]="content().live">
+  <h2>{{ content().heading }}</h2>
+  <p>{{ content().message }}</p>
+  @if (correlationId()) {
+    <p>Correlation ID: {{ correlationId() }}</p>
+  }
+  @if (state() === 'confirmation') {
+    <div class="confirmation-actions">
+      <button #confirmButton type="button" (click)="confirm()">Confirm</button>
+      <button type="button" (click)="cancel()">Cancel</button>
+    </div>
+  }
+</section>

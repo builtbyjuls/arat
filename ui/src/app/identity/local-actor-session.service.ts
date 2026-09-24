@@ -38,6 +38,7 @@ export class LocalActorSession {
     this.#storedPersona.invalid ? 'unavailable' : 'idle',
   );
   readonly #requestGeneration = signal(0);
+  #restoration: { actorId: string; promise: Promise<void> } | null = null;
 
   readonly selectedPersonaId = this.#selectedPersonaId.asReadonly();
   readonly state = this.#state.asReadonly();
@@ -49,9 +50,24 @@ export class LocalActorSession {
   }
 
   async restore(): Promise<void> {
-    if (this.actor() !== null) {
-      await this.validateCurrentActor();
+    const actor = this.actor();
+    if (actor === null) {
+      return;
     }
+
+    if (this.#restoration === null || this.#restoration.actorId !== actor.id) {
+      const restoration = {
+        actorId: actor.id,
+        promise: this.validateCurrentActor().finally(() => {
+          if (this.#restoration === restoration) {
+            this.#restoration = null;
+          }
+        }),
+      };
+      this.#restoration = restoration;
+    }
+
+    await this.#restoration.promise;
   }
 
   async select(personaId: string): Promise<void> {
@@ -63,6 +79,7 @@ export class LocalActorSession {
 
     if (nextActor.id !== this.#selectedPersonaId()) {
       this.#requestGeneration.update((value) => value + 1);
+      this.#restoration = null;
       this.#scopeReset.reset();
       this.#selectedPersonaId.set(nextActor.id);
       this.#state.set('idle');
@@ -70,7 +87,7 @@ export class LocalActorSession {
       await this.#router.navigateByUrl('/');
     }
 
-    await this.validateCurrentActor();
+    await this.restore();
   }
 
   bearerToken(): string | null {
@@ -79,6 +96,7 @@ export class LocalActorSession {
 
   private invalidate(): void {
     this.#requestGeneration.update((value) => value + 1);
+    this.#restoration = null;
     this.#scopeReset.reset();
     this.#state.set('unavailable');
   }
@@ -120,6 +138,7 @@ export class LocalActorSession {
 
   private clearSelection(): void {
     this.#requestGeneration.update((value) => value + 1);
+    this.#restoration = null;
     this.#scopeReset.reset();
     this.#selectedPersonaId.set(null);
     this.#state.set('unavailable');

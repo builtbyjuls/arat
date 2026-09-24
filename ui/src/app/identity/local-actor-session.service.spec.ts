@@ -138,6 +138,25 @@ describe('LocalActorSession', () => {
     expect(session.isVerified()).toBe(true);
   });
 
+  it('shares one validation request when restoring the same selected actor concurrently', async () => {
+    const selected = session.select('ari');
+    await Promise.resolve();
+    const [request] = http.match('/api/v1/dev/whoami');
+    if (request === undefined) {
+      throw new Error('Expected the initial local-actor validation request.');
+    }
+    const restored = session.restore();
+
+    expect(http.match('/api/v1/dev/whoami')).toHaveLength(0);
+    request.flush({
+      actorId: '10000000-0000-4000-8000-000000000001',
+      platformRoles: [],
+    });
+
+    await Promise.all([selected, restored]);
+    expect(session.isVerified()).toBe(true);
+  });
+
   it('invalidates the current actor after an ordinary API 401 response', async () => {
     await verifyActor(session, http, 'ari');
 
