@@ -30,7 +30,7 @@
         <p>Plan version: {{ plan.version ?? 'Unavailable' }}</p>
         <p class="stale-indicator" role="status">Showing the last server response. Refresh before taking a later action.</p>
       </div>
-      <button type="button" (click)="refresh()" [disabled]="requirementEdit.state() === 'conflict' || requirementEdit.state() === 'network-error' || requirementEdit.state() === 'reapply-ready' || requirementEdit.state() === 'submitting' || preferences.saveState() === 'submitting' || finalizations.saveState() === 'submitting' || finalizations.saveState() === 'network-error' || publications.state() === 'submitting' || publications.state() === 'network-error'">Refresh plan</button>
+      <button type="button" (click)="refresh()" [disabled]="requirementEdit.state() === 'conflict' || requirementEdit.state() === 'network-error' || requirementEdit.state() === 'reapply-ready' || requirementEdit.state() === 'submitting' || preferences.saveState() === 'submitting' || finalizations.saveState() === 'submitting' || finalizations.saveState() === 'network-error' || publications.state() === 'submitting' || publications.state() === 'network-error' || closures.state() === 'submitting' || closures.state() === 'network-error'">Refresh plan</button>
     </div>
 
     <section class="detail-card" aria-labelledby="requirements-heading">
@@ -545,6 +545,11 @@
             <div><dt>Offer deadline</dt><dd>{{ formatWindow(request.offerDeadline, request.timeZone) }}</dd></div>
             @if (request.closedAt) { <div><dt>Terminal time</dt><dd>{{ formatWindow(request.closedAt, request.timeZone) }}</dd></div> }
           </dl>
+          @if (request.state === 'OPEN') {
+            <button #closeTrigger type="button" class="close-request" (click)="reviewClosure(request, closeTrigger)" [disabled]="!closureActionAvailable(request)">
+              Close this open request
+            </button>
+          }
         </article>
       } @else if (requests.currentState() === 'absent') {
         <p>No current provider request is available for this plan.</p>
@@ -552,6 +557,70 @@
         <section class="history-state" role="alert">
           <p>The current provider request could not be loaded.</p>
           <button type="button" (click)="refresh()">Refresh plan</button>
+        </section>
+      }
+
+      @if (closures.result(); as closure) {
+        <section class="closure-result" aria-live="polite" role="status">
+          <h3 data-closure-outcome-focus tabindex="-1">Provider request closed</h3>
+          <p>The server closed request version {{ closure.request.requestVersion ?? 'Unavailable' }}. The plan was returned to collaboration; it was not cancelled.</p>
+          @if (closure.exactRetry) {
+            <p>This is the exact replay result from retrying the same close intent with its original idempotency key and plan ETag.</p>
+          }
+          <p>The current plan, current request, and request history shown here were read again after the command succeeded.</p>
+        </section>
+      }
+
+      @if (closureReview(); as reviewed) {
+        @if (closures.state() === 'idle') {
+          <section class="closure-confirmation" aria-labelledby="closure-confirmation-heading" aria-describedby="closure-confirmation-description" aria-live="polite" role="alertdialog">
+            <h3 id="closure-confirmation-heading">Close provider request version {{ reviewed.requestVersion ?? 'Unavailable' }}?</h3>
+            <p id="closure-confirmation-description">Closing stops this open request and returns the plan to collaboration. It does not cancel the plan, delete history, or reopen an older request.</p>
+            <div class="command-actions">
+              <button #confirmCloseButton type="button" class="primary-action" (click)="confirmClosure()" [disabled]="closures.state() !== 'idle'">
+                {{ closures.state() === 'submitting' ? 'Closing request...' : 'Confirm request closure' }}
+              </button>
+              <button type="button" (click)="cancelClosureReview()" [disabled]="closures.state() !== 'idle'">Keep request open</button>
+            </div>
+          </section>
+        }
+      }
+
+      @if (closures.state() === 'submitting') {
+        <section class="closure-progress" aria-live="polite" role="status">
+          <h3 data-closure-outcome-focus tabindex="-1">Closing provider request...</h3>
+          <p>Waiting for the server response. This close intent cannot be submitted again while it is in progress.</p>
+        </section>
+      } @else if (closures.state() === 'network-error') {
+        <section class="command-state" aria-live="assertive" role="alert">
+          <p>The close response was not received. The server may have completed it.</p>
+          <p>Retry sends the exact same close command with the same idempotency key and plan ETag. Refreshing will not resubmit it.</p>
+          @if (closures.correlationId()) { <p>Correlation ID: {{ closures.correlationId() }}</p> }
+          <div class="command-actions">
+            <button data-closure-outcome-focus type="button" (click)="retryClosure()">Retry exact close</button>
+            <button type="button" (click)="refreshClosureState()">Stop retrying and refresh</button>
+          </div>
+        </section>
+      } @else if (closures.state() === 'conflict') {
+        <section class="command-state" aria-live="assertive" role="alert">
+          <p>The plan changed after this close confirmation. The stale close was not resubmitted.</p>
+          <p>Refresh the plan and request state before deciding whether another action is available.</p>
+          @if (closures.correlationId()) { <p>Correlation ID: {{ closures.correlationId() }}</p> }
+          <button data-closure-outcome-focus type="button" (click)="refreshClosureState()">Refresh closure state</button>
+        </section>
+      } @else if (closures.state() === 'error') {
+        <section class="command-state" aria-live="assertive" role="alert">
+          @switch (closures.problemCode()) {
+            @case ('INVALID_REQUEST_STATE') { <p>This request is no longer open and cannot be closed. Refresh to see its current lifecycle.</p> }
+            @case ('IDEMPOTENCY_KEY_REUSED') { <p>The close intent key was already used for different input. Refresh before starting a new close intent.</p> }
+            @case ('FORBIDDEN_ROLE') { <p>Your current role cannot close this provider request.</p> }
+            @case ('ACCESS_DENIED') { <p>Your current role cannot close this provider request.</p> }
+            @case ('PRIVATE_RESOURCE_NOT_FOUND') { <p>This plan or provider request is unavailable.</p> }
+            @case ('INVALID_CLOSURE_RESPONSE') { <p>The server returned an incomplete close response. Refresh before taking another action.</p> }
+            @default { <p>The provider request could not be closed. Refresh before trying again.</p> }
+          }
+          @if (closures.correlationId()) { <p>Correlation ID: {{ closures.correlationId() }}</p> }
+          <button data-closure-outcome-focus type="button" (click)="refreshClosureState()">Refresh plan and request state</button>
         </section>
       }
 

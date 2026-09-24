@@ -146,4 +146,25 @@ describe('PlanApi', () => {
       '/plans/plan%20id/published-requests/request%20id',
     );
   });
+
+  it('creates one versioned request-closure intent and executes it', () => {
+    const intent = { idempotencyKey: 'key-1' } as IdempotentMutationIntent<undefined>;
+    const beginIdempotentMutation = vi.fn(() => intent);
+    const executeIdempotent = vi.fn(() => of({ body: null }));
+    TestBed.configureTestingModule({
+      providers: [{ provide: ApiHttpClient, useValue: { beginIdempotentMutation, executeIdempotent } }],
+    });
+    const api = TestBed.inject(PlanApi);
+
+    const createdIntent = api.createRequestClosureIntent('request id', '"7"');
+    api.closeRequest(createdIntent).subscribe();
+
+    expect(createdIntent).toBe(intent);
+    expect(beginIdempotentMutation).toHaveBeenCalledWith({
+      method: 'POST',
+      path: '/published-requests/request%20id/closure',
+      precondition: { header: 'If-Match', value: '"7"' },
+    });
+    expect(executeIdempotent).toHaveBeenCalledWith(intent);
+  });
 });

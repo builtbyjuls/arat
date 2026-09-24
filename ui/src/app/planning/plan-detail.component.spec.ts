@@ -10,6 +10,7 @@ import { PlanPreferenceService } from './plan-preference.service';
 import { PlanFinalizationService } from './plan-finalization.service';
 import { PlanPublicationService } from './plan-publication.service';
 import { PlanRequestHistoryService } from './plan-request-history.service';
+import { PlanRequestClosureService } from './plan-request-closure.service';
 import { ActorScopeResetService } from '../identity/actor-scope-reset.service';
 
 describe('PlanDetailComponent', () => {
@@ -78,6 +79,268 @@ describe('PlanDetailComponent', () => {
     await fixture.whenStable();
 
     expect(requests.load).not.toHaveBeenCalled();
+  });
+
+  it('offers closure only for the server-read current OPEN request', async () => {
+    const requests = fakeRequests();
+    requests.current.set(request('request-current', 2, 'OPEN'));
+    requests.items.set([request('request-history', 1, 'OPEN')]);
+    const fixture = await createComponent(
+      fakeDetail('ready', 'OPEN_FOR_OFFERS'), fakeEdit(), fakePreferences(), true,
+      fakeFinalizations(), fakePublications(), requests,
+    );
+    const root = fixture.nativeElement as HTMLElement;
+
+    expect(Array.from(root.querySelectorAll('.close-request'))).toHaveLength(1);
+    expect(root.querySelector('.close-request')?.closest('article')?.textContent)
+      .toContain('Current version 2');
+
+    requests.current.set(request('request-current', 2, 'CLOSED'));
+    fixture.detectChanges();
+    expect(root.querySelector('.close-request')).toBeNull();
+  });
+
+  it('focuses explicit close confirmation and restores the trigger on cancel', async () => {
+    const requests = fakeRequests();
+    requests.current.set(request('request-current', 2, 'OPEN'));
+    const fixture = await createComponent(
+      fakeDetail('ready', 'OPEN_FOR_OFFERS'), fakeEdit(), fakePreferences(), true,
+      fakeFinalizations(), fakePublications(), requests,
+    );
+    const root = fixture.nativeElement as HTMLElement;
+    const trigger = root.querySelector<HTMLButtonElement>('.close-request');
+
+    trigger?.focus();
+    trigger?.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const confirmation = root.querySelector('[role="alertdialog"]');
+    const buttons = confirmation?.querySelectorAll('button');
+    expect(confirmation?.textContent).toContain('It does not cancel the plan');
+    expect(document.activeElement).toBe(buttons?.[0]);
+
+    buttons?.[1]?.click();
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(trigger);
+    expect(root.querySelector('[role="alertdialog"]')).toBeNull();
+  });
+
+  it('submits the reviewed current request once and re-reads authoritative state', async () => {
+    const requests = fakeRequests();
+    requests.current.set(request('request-current', 2, 'OPEN'));
+    const closures = fakeClosures();
+    const closed = closureResult(false);
+    closures.close.mockImplementation(async () => {
+      closures.result.set(closed);
+      closures.state.set('succeeded');
+      return closed;
+    });
+    const detail = fakeDetail('ready', 'OPEN_FOR_OFFERS');
+    const fixture = await createComponent(
+      detail, fakeEdit(), fakePreferences(), true, fakeFinalizations(),
+      fakePublications(), requests, closures,
+    );
+    const root = fixture.nativeElement as HTMLElement;
+
+    root.querySelector<HTMLButtonElement>('.close-request')?.click();
+    fixture.detectChanges();
+    root.querySelector<HTMLButtonElement>('[role="alertdialog"] .primary-action')?.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(closures.close).toHaveBeenCalledTimes(1);
+    expect(closures.close).toHaveBeenCalledWith('plan-1', 'request-current', '"7"');
+    expect(detail.load).toHaveBeenCalledWith('plan-1');
+    expect(requests.load).toHaveBeenCalledWith('plan-1');
+    expect(root.textContent).toContain('The plan was returned to collaboration; it was not cancelled.');
+    expect(document.activeElement).toBe(root.querySelector('.closure-result h3'));
+  });
+
+  it('moves focus from confirmation to the in-progress close status', async () => {
+    const requests = fakeRequests();
+    requests.current.set(request('request-current', 2, 'OPEN'));
+    const closures = fakeClosures();
+    closures.close.mockImplementation(async () => {
+      closures.state.set('submitting');
+      return null;
+    });
+    const fixture = await createComponent(
+      fakeDetail('ready', 'OPEN_FOR_OFFERS'), fakeEdit(), fakePreferences(), true,
+      fakeFinalizations(), fakePublications(), requests, closures,
+    );
+    const root = fixture.nativeElement as HTMLElement;
+
+    root.querySelector<HTMLButtonElement>('.close-request')?.click();
+    fixture.detectChanges();
+    root.querySelector<HTMLButtonElement>('[role="alertdialog"] .primary-action')?.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(document.activeElement).toBe(root.querySelector('.closure-progress h3'));
+  });
+
+  it('waits for the authoritative success refresh before focusing the result', async () => {
+    let finishPlanRefresh!: () => void;
+    const requests = fakeRequests();
+    requests.current.set(request('request-current', 2, 'OPEN'));
+    const closures = fakeClosures();
+    const closed = closureResult(false);
+    closures.close.mockImplementation(async () => {
+      closures.result.set(closed);
+      closures.state.set('succeeded');
+      return closed;
+    });
+    const detail = fakeDetail('ready', 'OPEN_FOR_OFFERS');
+    const currentPlan = detail.plan();
+    const fixture = await createComponent(
+      detail, fakeEdit(), fakePreferences(), true, fakeFinalizations(),
+      fakePublications(), requests, closures,
+    );
+    const root = fixture.nativeElement as HTMLElement;
+    detail.load.mockClear();
+    detail.load.mockImplementation(() => {
+      detail.state.set('loading');
+      detail.plan.set(null);
+      return new Promise<void>((resolve) => {
+        finishPlanRefresh = () => {
+          detail.plan.set(currentPlan);
+          detail.state.set('ready');
+          resolve();
+        };
+      });
+    });
+
+    root.querySelector<HTMLButtonElement>('.close-request')?.click();
+    fixture.detectChanges();
+    root.querySelector<HTMLButtonElement>('[role="alertdialog"] .primary-action')?.click();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    expect(detail.state()).toBe('loading');
+    expect(root.querySelector('.closure-result')).toBeNull();
+
+    finishPlanRefresh();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(detail.state()).toBe('ready');
+    expect(document.activeElement).toBe(root.querySelector('.closure-result h3'));
+  });
+
+  it.each([
+    ['INVALID_REQUEST_STATE', 'no longer open'],
+    ['PRIVATE_RESOURCE_NOT_FOUND', 'plan or provider request is unavailable'],
+    ['FORBIDDEN_ROLE', 'current role cannot close'],
+    ['IDEMPOTENCY_KEY_REUSED', 'intent key was already used'],
+  ])('renders distinct close failure %s without raw server detail', async (problemCode, message) => {
+    const closures = fakeClosures();
+    closures.state.set('error');
+    closures.problemCode.set(problemCode);
+    const fixture = await createComponent(
+      fakeDetail('ready', 'OPEN_FOR_OFFERS'), fakeEdit(), fakePreferences(), true,
+      fakeFinalizations(), fakePublications(), fakeRequests(), closures,
+    );
+    const text = (fixture.nativeElement as HTMLElement).textContent;
+
+    expect(text).toContain(message);
+    expect(text).not.toContain('Do not render this raw detail');
+  });
+
+  it('distinguishes bounded transport retry, stale conflict, and exact replay', async () => {
+    const closures = fakeClosures();
+    closures.state.set('network-error');
+    const fixture = await createComponent(
+      fakeDetail('ready', 'OPEN_FOR_OFFERS'), fakeEdit(), fakePreferences(), true,
+      fakeFinalizations(), fakePublications(), fakeRequests(), closures,
+    );
+    expect((fixture.nativeElement as HTMLElement).textContent)
+      .toContain('Retry sends the exact same close command');
+    expect(document.activeElement?.textContent).toContain('Retry exact close');
+
+    closures.state.set('conflict');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect((fixture.nativeElement as HTMLElement).textContent)
+      .toContain('The stale close was not resubmitted.');
+    expect(document.activeElement?.textContent).toContain('Refresh closure state');
+
+    closures.state.set('error');
+    closures.problemCode.set('INVALID_REQUEST_STATE');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(document.activeElement?.textContent).toContain('Refresh plan and request state');
+
+    closures.result.set(closureResult(true));
+    closures.state.set('succeeded');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect((fixture.nativeElement as HTMLElement).textContent)
+      .toContain('exact replay result');
+  });
+
+  it('moves focus to the private unavailable heading after a close 404', async () => {
+    const requests = fakeRequests();
+    requests.current.set(request('request-current', 2, 'OPEN'));
+    const closures = fakeClosures();
+    closures.close.mockImplementation(async () => {
+      closures.state.set('error');
+      closures.problemCode.set('PRIVATE_RESOURCE_NOT_FOUND');
+      return null;
+    });
+    const detail = fakeDetail('ready', 'OPEN_FOR_OFFERS');
+    const fixture = await createComponent(
+      detail, fakeEdit(), fakePreferences(), true, fakeFinalizations(),
+      fakePublications(), requests, closures,
+    );
+    const root = fixture.nativeElement as HTMLElement;
+
+    root.querySelector<HTMLButtonElement>('.close-request')?.click();
+    fixture.detectChanges();
+    root.querySelector<HTMLButtonElement>('[role="alertdialog"] .primary-action')?.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(detail.discardInaccessiblePlan).toHaveBeenCalledWith('plan-1');
+    expect(document.activeElement).toBe(root.querySelector('#plan-heading'));
+  });
+
+  it('clears an open close confirmation when the actor changes', async () => {
+    const requests = fakeRequests();
+    requests.current.set(request('request-current', 2, 'OPEN'));
+    const fixture = await createComponent(
+      fakeDetail('ready', 'OPEN_FOR_OFFERS'), fakeEdit(), fakePreferences(), true,
+      fakeFinalizations(), fakePublications(), requests,
+    );
+    const root = fixture.nativeElement as HTMLElement;
+    root.querySelector<HTMLButtonElement>('.close-request')?.click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.closureReview()).not.toBeNull();
+
+    TestBed.inject(ActorScopeResetService).reset();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.closureReview()).toBeNull();
+    expect(root.querySelector('[role="alertdialog"]')).toBeNull();
+  });
+
+  it('allows a deliberate close intent for a newly published current request', async () => {
+    const requests = fakeRequests();
+    requests.current.set(request('request-new', 3, 'OPEN'));
+    const closures = fakeClosures();
+    closures.state.set('succeeded');
+    closures.result.set(closureResult(false));
+    const fixture = await createComponent(
+      fakeDetail('ready', 'OPEN_FOR_OFFERS'), fakeEdit(), fakePreferences(), true,
+      fakeFinalizations(), fakePublications(), requests, closures,
+    );
+    const root = fixture.nativeElement as HTMLElement;
+
+    root.querySelector<HTMLButtonElement>('.close-request')?.click();
+    fixture.detectChanges();
+
+    expect(closures.dismiss).toHaveBeenCalledOnce();
+    expect(fixture.componentInstance.closureReview()?.requestId).toBe('request-new');
   });
 
   it('renders a private unavailable state without raw problem details', async () => {
@@ -688,6 +951,7 @@ async function createComponent(
   finalizations = fakeFinalizations(),
   publications = fakePublications(),
   requests = fakeRequests(),
+  closures = fakeClosures(),
 ) {
   await TestBed.configureTestingModule({
     imports: [PlanDetailComponent],
@@ -700,6 +964,7 @@ async function createComponent(
       { provide: PlanFinalizationService, useValue: finalizations },
       { provide: PlanPublicationService, useValue: publications },
       { provide: PlanRequestHistoryService, useValue: requests },
+      { provide: PlanRequestClosureService, useValue: closures },
     ],
   }).compileComponents();
   const fixture = TestBed.createComponent(PlanDetailComponent);
@@ -750,6 +1015,27 @@ function fakeRequests() {
     refreshHistory: vi.fn().mockResolvedValue(undefined),
     loadMore: vi.fn().mockResolvedValue(undefined),
     readDetail: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
+function fakeClosures() {
+  const state = signal<'conflict' | 'error' | 'idle' | 'network-error' | 'submitting' | 'succeeded'>('idle');
+  const problemCode = signal<string | null>(null);
+  const result = signal<ReturnType<typeof closureResult> | null>(null);
+  return {
+    state,
+    problemCode,
+    correlationId: signal<string | null>(null),
+    result,
+    usePlan: vi.fn(),
+    releasePlan: vi.fn(),
+    close: vi.fn(async (): Promise<ReturnType<typeof closureResult> | null> => null),
+    retry: vi.fn(async (): Promise<ReturnType<typeof closureResult> | null> => null),
+    dismiss: vi.fn(() => {
+      state.set('idle');
+      problemCode.set(null);
+      result.set(null);
+    }),
   };
 }
 
@@ -885,6 +1171,17 @@ function publicationResult(outcome: 'initial' | 'replacement' | 'versioned') {
       mustHaves: ['parking'],
       categoryAttributes: { hasParking: true },
       offerDeadline: '2027-01-08T02:00:00Z',
+    },
+  };
+}
+
+function closureResult(exactRetry: boolean) {
+  return {
+    etag: '"8"',
+    exactRetry,
+    request: {
+      ...request('request-current', 2, 'CLOSED'),
+      category: 'COURT',
     },
   };
 }

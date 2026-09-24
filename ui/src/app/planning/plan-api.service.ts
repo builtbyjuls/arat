@@ -161,6 +161,23 @@ export class PlanApi {
     );
   }
 
+  createRequestClosureIntent(
+    requestId: string,
+    etag: string,
+  ): IdempotentMutationIntent<undefined> {
+    return this.#api.beginIdempotentMutation({
+      method: 'POST',
+      path: `/published-requests/${encodeURIComponent(requestId)}/closure`,
+      precondition: ifMatch(etag),
+    });
+  }
+
+  closeRequest(
+    intent: IdempotentMutationIntent<undefined>,
+  ): Observable<ApiHttpResult<PublishedRequest>> {
+    return this.#api.executeIdempotent<PublishedRequest, undefined>(intent);
+  }
+
   createIntent(
     groupId: string,
     request: CreatePlanRequest,

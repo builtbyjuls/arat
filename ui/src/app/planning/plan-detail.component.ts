@@ -1,5 +1,14 @@
 import { KeyValuePipe } from '@angular/common';
-import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import {
+  AfterViewChecked,
+  Component,
+  ElementRef,
+  OnDestroy,
+  OnInit,
+  ViewChild,
+  inject,
+  signal,
+} from '@angular/core';
 import { ReactiveFormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { PlanDetailService } from './plan-detail.service';
@@ -13,6 +22,11 @@ import {
   PublicationResult,
 } from './plan-publication.service';
 import { PlanRequestHistoryService } from './plan-request-history.service';
+import {
+  PlanRequestClosureService,
+  RequestClosureResult,
+  RequestClosureState,
+} from './plan-request-closure.service';
 import { ActorScopeResetService } from '../identity/actor-scope-reset.service';
 import {
   createRequirementForm,
@@ -31,7 +45,7 @@ import {
   createPlanFinalizationForm,
   validatePlanFinalization,
 } from './plan-finalization-form';
-import { RequirementFinalization } from './plan-api.service';
+import { GroupPublishedRequest, RequirementFinalization } from './plan-api.service';
 
 @Component({
   imports: [KeyValuePipe, PlanRequirementFieldsComponent, ReactiveFormsModule, RouterLink],
@@ -39,13 +53,14 @@ import { RequirementFinalization } from './plan-api.service';
   styleUrl: './plan-detail.component.scss',
   templateUrl: './plan-detail.component.html',
 })
-export class PlanDetailComponent implements OnDestroy, OnInit {
+export class PlanDetailComponent implements AfterViewChecked, OnDestroy, OnInit {
   readonly planDetail = inject(PlanDetailService);
   readonly requirementEdit = inject(PlanRequirementEditService);
   readonly preferences = inject(PlanPreferenceService);
   readonly finalizations = inject(PlanFinalizationService);
   readonly publications = inject(PlanPublicationService);
   readonly requests = inject(PlanRequestHistoryService);
+  readonly closures = inject(PlanRequestClosureService);
   readonly #scopeReset = inject(ActorScopeResetService);
   readonly #route = inject(ActivatedRoute);
   readonly editForm = createRequirementForm();
@@ -53,7 +68,14 @@ export class PlanDetailComponent implements OnDestroy, OnInit {
   readonly finalizationForm = createPlanFinalizationForm();
   readonly preferenceFormReady = signal(false);
   readonly publicationReview = signal<RequirementFinalization | null>(null);
+  readonly closureReview = signal<GroupPublishedRequest | null>(null);
+  @ViewChild('confirmCloseButton') private confirmCloseButton?: ElementRef<HTMLButtonElement>;
+  readonly #element = inject<ElementRef<HTMLElement>>(ElementRef);
   #destroyed = false;
+  #closureConfirmationFocused = false;
+  #focusedClosureState: RequestClosureState | null = null;
+  #focusPlanHeadingAfterClosure = false;
+  #closureTrigger: HTMLButtonElement | null = null;
   #preferenceFormPlanId: string | null = null;
   #finalizationFormPlanId: string | null = null;
   #loadRequestId = 0;
@@ -66,6 +88,7 @@ export class PlanDetailComponent implements OnDestroy, OnInit {
       this.#finalizationFormPlanId = null;
       this.preferenceFormReady.set(false);
       this.publicationReview.set(null);
+      this.clearClosureReview();
       hydratePreferenceForm(this.preferenceForm, null);
       this.finalizationForm.reset({ candidateWindowId: '', offerDeadline: '' });
     });
@@ -77,6 +100,7 @@ export class PlanDetailComponent implements OnDestroy, OnInit {
         this.finalizations.usePlan(planId);
         this.publications.usePlan(planId);
         this.requests.usePlan(planId);
+        this.closures.usePlan(planId);
         void this.loadAndHydrate(planId);
       }
     });
@@ -100,6 +124,38 @@ export class PlanDetailComponent implements OnDestroy, OnInit {
       this.finalizations.releasePlan(planId);
       this.publications.releasePlan(planId);
       this.requests.releasePlan(planId);
+      this.closures.releasePlan(planId);
+    }
+  }
+
+  ngAfterViewChecked(): void {
+    const state = this.closures.state();
+    if (this.#focusPlanHeadingAfterClosure) {
+      const planHeading = this.#element.nativeElement.querySelector<HTMLElement>('#plan-heading');
+      if (planHeading !== null) {
+        this.#focusPlanHeadingAfterClosure = false;
+        queueMicrotask(() => planHeading.focus());
+        return;
+      }
+    }
+    if (this.closureReview() !== null && state === 'idle' && !this.#closureConfirmationFocused) {
+      this.#closureConfirmationFocused = true;
+      queueMicrotask(() => this.confirmCloseButton?.nativeElement.focus());
+      return;
+    }
+    if (state !== 'idle' && state !== this.#focusedClosureState) {
+      const outcome = this.#element.nativeElement
+        .querySelector<HTMLElement>('[data-closure-outcome-focus]');
+      if (outcome !== null) {
+        this.#focusedClosureState = state;
+        queueMicrotask(() => outcome.focus());
+      }
+    }
+    if (this.closureReview() === null || state !== 'idle') {
+      this.#closureConfirmationFocused = false;
+    }
+    if (state === 'idle') {
+      this.#focusedClosureState = null;
     }
   }
 
@@ -423,6 +479,86 @@ export class PlanDetailComponent implements OnDestroy, OnInit {
     void this.requests.refreshHistory(planId).then(() => this.discardPrivateRequestAccess(planId));
   }
 
+  reviewClosure(request: GroupPublishedRequest, trigger: HTMLButtonElement): void {
+    const current = this.requests.current();
+    if (
+      this.closures.state() === 'succeeded'
+      && this.closures.result()?.request.requestId !== request.requestId
+    ) {
+      this.closures.dismiss();
+    }
+    if (
+      request.state !== 'OPEN'
+      || request.requestId === undefined
+      || request.requestId !== current?.requestId
+      || this.closures.state() !== 'idle'
+    ) {
+      return;
+    }
+    this.#closureTrigger = trigger;
+    this.closureReview.set(request);
+  }
+
+  closureActionAvailable(request: GroupPublishedRequest): boolean {
+    return this.closures.state() === 'idle'
+      || (
+        this.closures.state() === 'succeeded'
+        && this.closures.result()?.request.requestId !== request.requestId
+      );
+  }
+
+  cancelClosureReview(): void {
+    if (this.closures.state() !== 'idle') {
+      return;
+    }
+    const trigger = this.#closureTrigger;
+    this.clearClosureReview();
+    trigger?.focus();
+  }
+
+  confirmClosure(): void {
+    const reviewed = this.closureReview();
+    const current = this.requests.current();
+    const planId = this.planId();
+    const etag = this.planDetail.etag();
+    if (
+      reviewed?.state !== 'OPEN'
+      || reviewed.requestId === undefined
+      || reviewed.requestId !== current?.requestId
+      || current?.state !== 'OPEN'
+      || planId === null
+    ) {
+      this.clearClosureReview();
+      return;
+    }
+    if (etag === null) {
+      this.clearClosureReview();
+      void this.loadAndHydrate(planId);
+      return;
+    }
+    void this.closures.close(planId, reviewed.requestId, etag)
+      .then((result) => this.handleClosure(result, planId));
+  }
+
+  retryClosure(): void {
+    const planId = this.planId();
+    if (planId !== null) {
+      void this.closures.retry(planId)
+        .then((result) => this.handleClosure(result, planId));
+    }
+  }
+
+  refreshClosureState(): void {
+    const planId = this.planId();
+    if (planId === null) {
+      return;
+    }
+    this.clearClosureReview();
+    this.closures.dismiss();
+    void Promise.all([this.planDetail.load(planId), this.requests.load(planId)])
+      .then(() => this.discardPrivateRequestAccess(planId));
+  }
+
   requestHistoryLabel(requestId: string | undefined): string {
     return requestId !== undefined && requestId === this.requests.current()?.requestId
       ? 'Current according to the server'
@@ -634,6 +770,31 @@ export class PlanDetailComponent implements OnDestroy, OnInit {
 
     this.publicationReview.set(null);
     await this.loadAndHydrate(planId);
+  }
+
+  private async handleClosure(
+    result: RequestClosureResult | null,
+    planId: string,
+  ): Promise<void> {
+    if (this.#destroyed || this.planId() !== planId) {
+      return;
+    }
+    if (result === null) {
+      if (this.closures.problemCode() === 'PRIVATE_RESOURCE_NOT_FOUND') {
+        this.clearClosureReview();
+        this.#focusPlanHeadingAfterClosure = true;
+        this.planDetail.discardInaccessiblePlan(planId);
+      }
+      return;
+    }
+    this.clearClosureReview();
+    await this.loadAndHydrate(planId);
+  }
+
+  private clearClosureReview(): void {
+    this.closureReview.set(null);
+    this.#closureTrigger = null;
+    this.#closureConfirmationFocused = false;
   }
 
   private isCurrentLoad(
