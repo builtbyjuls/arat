@@ -6,11 +6,13 @@ import {
   ApiHttpClient,
   ApiHttpResult,
   IdempotentMutationIntent,
+  InvitationAcceptanceIntent,
 } from '../api/api-http-client';
 
 export type CreateGroupRequest = components['schemas']['CreateGroupRequest'];
 export type CreateInvitationRequest = components['schemas']['CreateInvitationRequest'];
 export type GroupDetail = components['schemas']['GroupDetailRepresentation'];
+export type GroupMembership = components['schemas']['GroupMembershipRepresentation'];
 export type GroupPage = components['schemas']['GroupPageRepresentation'];
 export type GroupRepresentation = components['schemas']['GroupRepresentation'];
 export type GroupSummary = components['schemas']['GroupSummaryRepresentation'];
@@ -59,6 +61,17 @@ export class GroupApi {
     intent: IdempotentMutationIntent<CreateInvitationRequest>,
   ): Observable<ApiHttpResult<InvitationRepresentation>> {
     return this.#api.executeIdempotent(intent);
+  }
+
+  beginInvitationAcceptance(token: string): Promise<InvitationAcceptanceIntent> {
+    return this.#api.beginInvitationAcceptance(token);
+  }
+
+  acceptInvitation(
+    intent: InvitationAcceptanceIntent,
+    token: string,
+  ): Observable<ApiHttpResult<GroupMembership>> {
+    return this.#api.executeInvitationAcceptance(intent, token);
   }
 
   read(groupId: string): Observable<ApiHttpResult<GroupDetail>> {

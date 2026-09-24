@@ -101,6 +101,14 @@ export interface InvitationAcceptanceIntent {
   readonly idempotencyKey: string;
 }
 
+export class InvitationAcceptanceTokenMismatchError extends Error {
+  override readonly name = 'InvitationAcceptanceTokenMismatchError';
+
+  constructor() {
+    super('The invitation token does not match the retry intent.');
+  }
+}
+
 export const IDEMPOTENCY_KEY_GENERATOR = new InjectionToken<() => string>(
   'IDEMPOTENCY_KEY_GENERATOR',
   { factory: () => () => globalThis.crypto.randomUUID() },
@@ -166,7 +174,7 @@ class InvitationIntent
 
   beginAttempt(token: string, tokenDigest: string): ApiMutationRequest<undefined> {
     if (tokenDigest !== this.#tokenDigest) {
-      throw new Error('A changed invitation token requires a new intent.');
+      throw new InvitationAcceptanceTokenMismatchError();
     }
 
     this.claimAttempt();

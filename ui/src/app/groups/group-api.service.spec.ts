@@ -2,7 +2,11 @@ import { TestBed } from '@angular/core/testing';
 import { HttpParams } from '@angular/common/http';
 import { describe, expect, it, vi } from 'vitest';
 import { of } from 'rxjs';
-import { ApiHttpClient, IdempotentMutationIntent } from '../api/api-http-client';
+import {
+  ApiHttpClient,
+  IdempotentMutationIntent,
+  InvitationAcceptanceIntent,
+} from '../api/api-http-client';
 import { CreateInvitationRequest, GroupApi } from './group-api.service';
 
 describe('GroupApi', () => {
@@ -69,5 +73,21 @@ describe('GroupApi', () => {
       body: request,
     });
     expect(executeIdempotent).toHaveBeenCalledWith(createdIntent);
+  });
+
+  it('keeps invitation acceptance on the token-safe HTTP boundary', async () => {
+    const intent = { idempotencyKey: 'accept-key' } as InvitationAcceptanceIntent;
+    const beginInvitationAcceptance = vi.fn(async () => intent);
+    const executeInvitationAcceptance = vi.fn(() => of({ body: { groupId: 'group-1' } }));
+    TestBed.configureTestingModule({
+      providers: [{ provide: ApiHttpClient, useValue: { beginInvitationAcceptance, executeInvitationAcceptance } }],
+    });
+    const api = TestBed.inject(GroupApi);
+
+    const createdIntent = await api.beginInvitationAcceptance('raw-invitation-token');
+    api.acceptInvitation(createdIntent, 'raw-invitation-token').subscribe();
+
+    expect(beginInvitationAcceptance).toHaveBeenCalledWith('raw-invitation-token');
+    expect(executeInvitationAcceptance).toHaveBeenCalledWith(intent, 'raw-invitation-token');
   });
 });

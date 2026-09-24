@@ -38,8 +38,10 @@ export const routes: Routes = [
   },
   {
     path: 'invitations/accept',
-    ...privateRoute,
-    data: { requiresIdentity: true, title: 'Accept invitation', summary: 'Invitation acceptance will appear here.' },
+    canActivate: [localActorRouteGuard],
+    loadComponent: () => import('./groups/group-invitation-acceptance.component')
+      .then((component) => component.GroupInvitationAcceptanceComponent),
+    data: { requiresIdentity: true },
   },
   {
     path: 'plans/:planId',

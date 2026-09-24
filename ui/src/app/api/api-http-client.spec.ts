@@ -10,6 +10,7 @@ import {
   ApiHttpClient,
   ApiHttpError,
   IDEMPOTENCY_KEY_GENERATOR,
+  InvitationAcceptanceTokenMismatchError,
   ifMatch,
   ifNoneMatch,
 } from './api-http-client';
@@ -301,7 +302,7 @@ describe('ApiHttpClient', () => {
 
     await expect(firstValueFrom(
       client.executeInvitationAcceptance(intent, 'different-token'),
-    )).rejects.toThrow('A changed invitation token requires a new intent.');
+    )).rejects.toBeInstanceOf(InvitationAcceptanceTokenMismatchError);
     http.expectNone('/api/v1/group-invites/different-token/accept');
 
     token = 'one-time-invitation-token';

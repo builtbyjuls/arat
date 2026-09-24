@@ -1,0 +1,52 @@
+<section aria-labelledby="accept-invitation-heading">
+  <h1 id="accept-invitation-heading" data-route-heading tabindex="-1">Accept an invitation</h1>
+  <p>Paste the invitation token shared with you, then accept to join the group.</p>
+
+  <form [formGroup]="acceptanceForm" (ngSubmit)="accept()" novalidate>
+    <label for="invitation-token">Invitation token</label>
+    <input
+      id="invitation-token"
+      type="password"
+      formControlName="token"
+      autocomplete="off"
+      autocapitalize="off"
+      spellcheck="false"
+      aria-describedby="invitation-token-help invitation-token-error">
+    <p id="invitation-token-help">The token is used only to accept this invitation and is cleared after every attempt.</p>
+    @if (acceptanceForm.controls.token.touched && acceptanceForm.controls.token.invalid) {
+      <p id="invitation-token-error" class="field-error">Paste an invitation token to continue.</p>
+    }
+
+    @if (invitationAcceptance.state() === 'retryable') {
+      <section class="command-state" aria-live="assertive" role="alert">
+        @if (invitationAcceptance.retryTokenMismatch()) {
+          <p>Paste the original token again to retry this invitation acceptance.</p>
+        } @else {
+          <p>We could not confirm this invitation. Paste the same token again and accept to retry.</p>
+        }
+        @if (invitationAcceptance.correlationId()) {
+          <p>Correlation ID: {{ invitationAcceptance.correlationId() }}</p>
+        }
+      </section>
+    } @else if (invitationAcceptance.state() === 'conflict') {
+      <section class="command-state" aria-live="assertive" role="alert">
+        <p>This invitation acceptance conflicts with an earlier request. Start over before trying again.</p>
+        @if (invitationAcceptance.correlationId()) {
+          <p>Correlation ID: {{ invitationAcceptance.correlationId() }}</p>
+        }
+        <button type="button" (click)="startOver()">Start over</button>
+      </section>
+    } @else if (invitationAcceptance.state() === 'unavailable') {
+      <section class="command-state" aria-live="assertive" role="alert">
+        <p>This invitation is unavailable.</p>
+        @if (invitationAcceptance.correlationId()) {
+          <p>Correlation ID: {{ invitationAcceptance.correlationId() }}</p>
+        }
+      </section>
+    }
+
+    <button type="submit" [disabled]="invitationAcceptance.state() === 'submitting'">
+      {{ invitationAcceptance.state() === 'submitting' ? 'Accepting invitation...' : 'Accept invitation' }}
+    </button>
+  </form>
+</section>
