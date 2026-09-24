@@ -1,10 +1,11 @@
 import { Component, OnDestroy, OnInit, inject } from '@angular/core';
-import { FormControl, FormGroup, ReactiveFormsModule, ValidatorFn, Validators } from '@angular/forms';
+import { FormArray, FormControl, FormGroup, ReactiveFormsModule, ValidatorFn, Validators } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ActorScopeResetService } from '../identity/actor-scope-reset.service';
 import { CreateProviderRequest, ProviderRepresentation } from './provider-api.service';
 import { ProviderDetailService } from './provider-detail.service';
 import { ProviderProfileEditService } from './provider-profile-edit.service';
+import { ProviderVerificationSubmissionService } from './provider-verification-submission.service';
 
 @Component({
   imports: [ReactiveFormsModule, RouterLink],
@@ -15,6 +16,7 @@ import { ProviderProfileEditService } from './provider-profile-edit.service';
 export class ProviderDetailComponent implements OnDestroy, OnInit {
   readonly providerDetail = inject(ProviderDetailService);
   readonly profileEdit = inject(ProviderProfileEditService);
+  readonly verificationSubmission = inject(ProviderVerificationSubmissionService);
   readonly #route = inject(ActivatedRoute);
   readonly #scopeReset = inject(ActorScopeResetService);
   readonly profileForm = new FormGroup({
@@ -22,7 +24,11 @@ export class ProviderDetailComponent implements OnDestroy, OnInit {
     supportedCategories: new FormControl<ProviderCategory[]>([], { nonNullable: true, validators: [nonEmptyUniqueCategories()] }),
     serviceAreaCodes: new FormControl('', { nonNullable: true, validators: [areaCodesValid()] }),
   });
+  readonly verificationForm = new FormGroup({
+    evidenceReferences: new FormArray([evidenceReferenceControl()], { validators: [uniqueEvidenceReferences()] }),
+  });
   #formProviderId: string | null = null;
+  #verificationFormProviderId: string | null = null;
   #unregisterScopeReset: (() => void) | null = null;
 
   ngOnInit(): void {
@@ -30,7 +36,12 @@ export class ProviderDetailComponent implements OnDestroy, OnInit {
     this.#route.paramMap.subscribe((params) => {
       const providerId = params.get('providerId');
       if (providerId !== null) {
+        if (this.#verificationFormProviderId !== providerId) {
+          this.resetVerificationForm();
+          this.#verificationFormProviderId = providerId;
+        }
         this.profileEdit.useProvider(providerId);
+        this.verificationSubmission.useProvider(providerId);
         void this.loadProvider(providerId);
       }
     });
@@ -41,6 +52,7 @@ export class ProviderDetailComponent implements OnDestroy, OnInit {
     this.#unregisterScopeReset = null;
     const providerId = this.#route.snapshot.paramMap.get('providerId');
     if (providerId !== null) this.profileEdit.releaseProvider(providerId);
+    if (providerId !== null) this.verificationSubmission.releaseProvider(providerId);
   }
 
   reload(): void {
@@ -52,6 +64,7 @@ export class ProviderDetailComponent implements OnDestroy, OnInit {
       if (preserveDraft && this.providerDetail.state() === 'ready' && etag !== null) {
         this.profileEdit.markRefreshed(etag);
       }
+      if (this.providerDetail.state() === 'ready') this.verificationSubmission.completeRefresh(providerId);
     });
   }
 
@@ -100,6 +113,47 @@ export class ProviderDetailComponent implements OnDestroy, OnInit {
     this.profileEdit.dismiss();
   }
 
+  addEvidenceReference(): void {
+    if (this.verificationForm.controls.evidenceReferences.length < 10) {
+      this.verificationForm.controls.evidenceReferences.push(evidenceReferenceControl());
+    }
+  }
+
+  removeEvidenceReference(index: number): void {
+    const references = this.verificationForm.controls.evidenceReferences;
+    if (references.length > 1) {
+      references.removeAt(index);
+      references.markAsTouched();
+    }
+  }
+
+  submitVerification(): void {
+    if (this.verificationForm.invalid) {
+      this.verificationForm.markAllAsTouched();
+      return;
+    }
+    const providerId = this.#route.snapshot.paramMap.get('providerId');
+    if (providerId === null) return;
+    void this.verificationSubmission.submit(providerId, this.verificationRequest())
+      .then((result) => this.handleVerificationResult(providerId, result));
+  }
+
+  retryVerification(): void {
+    const providerId = this.#route.snapshot.paramMap.get('providerId');
+    if (providerId === null) return;
+    void this.verificationSubmission.retry(providerId)
+      .then((result) => this.handleVerificationResult(providerId, result));
+  }
+
+  refreshAfterVerificationConflict(): void {
+    const providerId = this.#route.snapshot.paramMap.get('providerId');
+    if (providerId !== null) void this.loadProvider(providerId, true);
+  }
+
+  dismissVerificationOutcome(): void {
+    this.verificationSubmission.dismiss();
+  }
+
   keepCurrentProfile(): void {
     const provider = this.providerDetail.provider();
     if (provider !== null) this.hydrateProfileForm(provider);
@@ -120,6 +174,31 @@ export class ProviderDetailComponent implements OnDestroy, OnInit {
   }
 
   roleLabel(role: string | undefined): string { return role === 'ADMIN' ? 'Admin' : 'Staff'; }
+
+  verificationStatusLabel(status: string | undefined): string {
+    return {
+      UNVERIFIED: 'Unverified',
+      PENDING: 'Pending review',
+      VERIFIED: 'Verified',
+      REJECTED: 'Rejected',
+      SUSPENDED: 'Suspended',
+    }[status ?? ''] ?? 'Unknown verification state';
+  }
+
+  verificationStatusGuidance(status: string | undefined): string {
+    return {
+      UNVERIFIED: 'This provider has not submitted evidence for operator review.',
+      PENDING: 'Evidence is pending operator review. Pending review is not verified eligibility.',
+      VERIFIED: 'An operator reviewed the configured evidence. Verification is not a safety, licensing, quality, inventory, or availability guarantee.',
+      REJECTED: 'The last submission was rejected. An administrator may submit a new evidence set for review.',
+      SUSPENDED: 'This provider is suspended. Verification submission is unavailable while suspended.',
+    }[status ?? ''] ?? 'The server returned an unknown verification state.';
+  }
+
+  canSubmitVerification(provider: { callerStaffRole?: string; verificationStatus?: string }): boolean {
+    return provider.callerStaffRole === 'ADMIN'
+      && (provider.verificationStatus === 'UNVERIFIED' || provider.verificationStatus === 'REJECTED');
+  }
 
   private async loadProvider(providerId: string, preserveDraft = false): Promise<void> {
     await this.providerDetail.load(providerId);
@@ -149,11 +228,49 @@ export class ProviderDetailComponent implements OnDestroy, OnInit {
     }
   }
 
+  private handleVerificationResult(
+    providerId: string,
+    result: { etag: string } | null,
+  ): void {
+    if (result === null) {
+      this.handleVerificationFailure();
+      return;
+    }
+    this.resetVerificationForm();
+    void this.loadProvider(providerId, true);
+  }
+
+  private handleVerificationFailure(): void {
+    if (this.verificationSubmission.state() === 'refresh-required') {
+      const providerId = this.#route.snapshot.paramMap.get('providerId');
+      if (providerId !== null) {
+        void this.loadProvider(providerId, true).then(() => {
+          if (this.providerDetail.state() === 'ready') this.verificationSubmission.completeRefresh(providerId);
+        });
+      }
+      return;
+    }
+    if (this.verificationSubmission.state() !== 'error') return;
+    if (this.verificationSubmission.problemCode() === 'PRIVATE_RESOURCE_NOT_FOUND') {
+      this.providerDetail.markUnavailable();
+    } else if (this.verificationSubmission.problemCode() === 'FORBIDDEN_ROLE') {
+      const providerId = this.#route.snapshot.paramMap.get('providerId');
+      if (providerId !== null) void this.loadProvider(providerId, true);
+    }
+  }
+
   private profileRequest(): CreateProviderRequest {
     return {
       displayName: this.profileForm.controls.displayName.value.trim(),
       supportedCategories: this.profileForm.controls.supportedCategories.value,
       serviceAreaCodes: this.profileForm.controls.serviceAreaCodes.value.split('\n').map((code) => code.trim()).filter(Boolean),
+    };
+  }
+
+  private verificationRequest() {
+    return {
+      evidenceReferences: this.verificationForm.controls.evidenceReferences.controls
+        .map((control) => control.value),
     };
   }
 
@@ -167,7 +284,15 @@ export class ProviderDetailComponent implements OnDestroy, OnInit {
 
   private resetForm(): void {
     this.#formProviderId = null;
+    this.#verificationFormProviderId = null;
     this.profileForm.reset({ displayName: '', supportedCategories: [], serviceAreaCodes: '' });
+    this.resetVerificationForm();
+  }
+
+  private resetVerificationForm(): void {
+    this.verificationForm.setControl('evidenceReferences', new FormArray([evidenceReferenceControl()], {
+      validators: [uniqueEvidenceReferences()],
+    }));
   }
 }
 
@@ -192,5 +317,25 @@ function areaCodesValid(): ValidatorFn {
     return codes.length >= 1 && codes.length <= 20 && codes.every((code: string) => code.length <= 64) && new Set(codes).size === codes.length
       ? null
       : { areaCodes: true };
+  };
+}
+
+function evidenceReferenceControl(): FormControl<string> {
+  return new FormControl('', {
+    nonNullable: true,
+    validators: [Validators.required, Validators.maxLength(256), printableAscii()],
+  });
+}
+
+function printableAscii(): ValidatorFn {
+  return (control) => /^[\x20-\x7e]+$/.test(control.value) ? null : { printableAscii: true };
+}
+
+function uniqueEvidenceReferences(): ValidatorFn {
+  return (control) => {
+    const references = control.value as readonly string[];
+    return references.length >= 1 && references.length <= 10 && new Set(references).size === references.length
+      ? null
+      : { evidenceReferences: true };
   };
 }

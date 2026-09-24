@@ -9,6 +9,8 @@ export type CreateProviderRequest = components['schemas']['CreateProviderRequest
 export type ProviderDetail = components['schemas']['ProviderDetailRepresentation'];
 export type ProviderRepresentation = components['schemas']['ProviderRepresentation'];
 export type ProviderSummary = components['schemas']['ProviderSummaryRepresentation'];
+export type SubmitProviderVerificationRequest = components['schemas']['SubmitProviderVerificationRequest'];
+export type ProviderVerificationSubmission = components['schemas']['ProviderVerificationSubmissionRepresentation'];
 
 const PROVIDER_PAGE_LIMIT = 20;
 
@@ -47,5 +49,22 @@ export class ProviderApi {
       body: request,
       precondition: ifMatch(etag),
     });
+  }
+
+  createVerificationSubmissionIntent(
+    providerId: string,
+    request: SubmitProviderVerificationRequest,
+  ): IdempotentMutationIntent<SubmitProviderVerificationRequest> {
+    return this.#api.beginIdempotentMutation({
+      method: 'POST',
+      path: `/providers/${encodeURIComponent(providerId)}/verification-submissions`,
+      body: request,
+    });
+  }
+
+  submitVerification(
+    intent: IdempotentMutationIntent<SubmitProviderVerificationRequest>,
+  ): Observable<ApiHttpResult<ProviderVerificationSubmission>> {
+    return this.#api.executeIdempotent(intent);
   }
 }

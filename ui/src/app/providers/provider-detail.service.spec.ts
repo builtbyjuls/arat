@@ -70,6 +70,32 @@ describe('ProviderDetailService', () => {
     expect(service.provider()).toMatchObject({ displayName: 'Updated Courts', version: 3 });
     expect(service.etag()).toBe('"3"');
   });
+
+  it('does not let an older profile response roll back a refreshed verification state', async () => {
+    const api = {
+      read: vi.fn()
+        .mockReturnValueOnce(of(detailResult()))
+        .mockReturnValueOnce(of({
+          ...detailResult(),
+          body: {
+            providerId: 'provider-1', displayName: 'BGC Courts', callerStaffRole: 'ADMIN',
+            verificationStatus: 'PENDING', supportedCategories: ['COURT'], serviceAreaCodes: ['BGC'], version: 4,
+          },
+          etag: '"4"',
+        })),
+    };
+    const service = setup(api);
+    await service.load('provider-1');
+    await service.load('provider-1');
+
+    service.applyProfile({
+      providerId: 'provider-1', displayName: 'BGC Courts', supportedCategories: ['COURT'],
+      serviceAreaCodes: ['BGC'], verificationStatus: 'UNVERIFIED', version: 3,
+    }, '"3"');
+
+    expect(service.provider()).toMatchObject({ verificationStatus: 'PENDING', version: 4 });
+    expect(service.etag()).toBe('"4"');
+  });
 });
 
 function setup(api: Pick<ProviderApi, 'read'>): ProviderDetailService {

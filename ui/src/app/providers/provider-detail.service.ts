@@ -56,6 +56,9 @@ export class ProviderDetailService {
     if (current === null || current.providerId !== provider.providerId || etag.length === 0) {
       return;
     }
+    if (provider.version !== undefined && current.version !== undefined && provider.version < current.version) {
+      return;
+    }
     this.#requestId += 1;
     this.#provider.set({ ...provider, callerStaffRole: current.callerStaffRole });
     this.#etag.set(etag);

@@ -19,17 +19,17 @@
         <h1 id="provider-heading" data-route-heading tabindex="-1">{{ provider.displayName }}</h1>
         <p class="role-label">Your staff role: {{ roleLabel(provider.callerStaffRole) }}</p>
       </div>
-      <button type="button" (click)="reload()" [disabled]="profileEdit.state() === 'submitting'">Reload provider organization</button>
+      <button type="button" (click)="reload()" [disabled]="profileEdit.state() === 'submitting' || verificationSubmission.state() === 'submitting'">Reload provider organization</button>
     </div>
     <section class="provider-profile" aria-labelledby="provider-profile-heading">
       <h2 id="provider-profile-heading">Provider profile</h2>
       <dl>
-        <div><dt>Verification status</dt><dd>{{ provider.verificationStatus }}</dd></div>
+        <div><dt>Verification status</dt><dd>{{ verificationStatusLabel(provider.verificationStatus) }} ({{ provider.verificationStatus }})</dd></div>
         <div><dt>Provider version</dt><dd>{{ provider.version }}</dd></div>
         <div><dt>Supported categories</dt><dd>{{ provider.supportedCategories?.join(', ') }}</dd></div>
         <div><dt>Service area codes</dt><dd>{{ provider.serviceAreaCodes?.join(', ') }}</dd></div>
       </dl>
-      <p>Verification is an operator review. It is not a guarantee of safety, licensing, service quality, inventory, or availability.</p>
+      <p>{{ verificationStatusGuidance(provider.verificationStatus) }}</p>
     </section>
     @if (provider.callerStaffRole === 'ADMIN') {
       <section class="provider-profile profile-edit" aria-labelledby="provider-profile-edit-heading">
@@ -58,7 +58,7 @@
             @if (profileForm.controls.serviceAreaCodes.touched && profileForm.controls.serviceAreaCodes.invalid) { <p id="provider-service-areas-error" class="field-error">Enter one to 20 unique area codes, each at most 64 characters.</p> }
             @else if (profileEdit.violationFor('serviceAreaCodes'); as violation) { <p id="provider-service-areas-error" class="field-error">{{ violation }}</p> }
           </div>
-          <button type="submit" [disabled]="profileEdit.state() === 'submitting' || profileEdit.state() === 'conflict' || profileEdit.state() === 'reapply-ready'">{{ profileEdit.state() === 'submitting' ? 'Saving provider profile...' : 'Save provider profile' }}</button>
+          <button type="submit" [disabled]="profileEdit.state() === 'submitting' || profileEdit.state() === 'conflict' || profileEdit.state() === 'reapply-ready' || verificationSubmission.state() === 'submitting'">{{ profileEdit.state() === 'submitting' ? 'Saving provider profile...' : 'Save provider profile' }}</button>
         </form>
         @if (profileEdit.state() === 'network-error') {
           <section class="command-state" aria-live="assertive" role="alert"><p>Provider profile could not reach the server. Retry to send the same replacement.</p>@if (profileEdit.correlationId()) { <p>Correlation ID: {{ profileEdit.correlationId() }}</p> }<button type="button" (click)="retryProfile()">Retry profile save</button><button type="button" (click)="dismissProfileError()">Continue editing</button></section>
@@ -73,6 +73,54 @@
             @else { <p>Provider profile could not be saved. Check the form and try again.</p> }
             @if (profileEdit.correlationId()) { <p>Correlation ID: {{ profileEdit.correlationId() }}</p> }
             <button type="button" (click)="dismissProfileError()">Dismiss</button>
+          </section>
+        }
+      </section>
+      <section class="provider-profile verification-submission" aria-labelledby="provider-verification-heading">
+        <h2 id="provider-verification-heading">Submit verification evidence</h2>
+        <p>Evidence references are plain text for operator review. They are not links, uploads, or documents fetched by this browser.</p>
+        @if (canSubmitVerification(provider)) {
+          <form [formGroup]="verificationForm" (ngSubmit)="submitVerification()" novalidate>
+            <div formArrayName="evidenceReferences" class="evidence-references">
+              @for (reference of verificationForm.controls.evidenceReferences.controls; track $index; let index = $index) {
+                <div class="field evidence-reference">
+                  <label [for]="'provider-evidence-reference-' + index">Evidence reference {{ index + 1 }}</label>
+                  <textarea [id]="'provider-evidence-reference-' + index" [formControlName]="index" maxlength="256" [attr.aria-describedby]="reference.touched && reference.invalid ? 'provider-evidence-reference-error-' + index : null"></textarea>
+                  @if (reference.touched && reference.invalid) { <p [id]="'provider-evidence-reference-error-' + index" class="field-error">Enter 1 to 256 printable ASCII characters.</p> }
+                </div>
+              }
+            </div>
+            @if (verificationForm.controls.evidenceReferences.touched && verificationForm.controls.evidenceReferences.invalid) { <p class="field-error">Evidence references must be unique. Submit one to 10 references.</p> }
+            @if (verificationSubmission.violationFor('evidenceReferences'); as violation) { <p class="field-error">{{ violation }}</p> }
+            <div class="form-actions">
+              <button type="button" (click)="addEvidenceReference()" [disabled]="verificationForm.controls.evidenceReferences.length === 10 || verificationSubmission.state() === 'submitting' || profileEdit.state() === 'submitting'">Add evidence reference</button>
+              @if (verificationForm.controls.evidenceReferences.length > 1) { <button type="button" (click)="removeEvidenceReference(verificationForm.controls.evidenceReferences.length - 1)" [disabled]="verificationSubmission.state() === 'submitting' || profileEdit.state() === 'submitting'">Remove last reference</button> }
+              <button type="submit" [disabled]="verificationSubmission.state() !== 'idle' || profileEdit.state() === 'submitting'">{{ verificationSubmission.state() === 'submitting' ? 'Submitting verification evidence...' : 'Submit for verification review' }}</button>
+            </div>
+          </form>
+        } @else if (provider.callerStaffRole !== 'ADMIN') {
+          <p>Only an active provider administrator can submit verification evidence.</p>
+        } @else if (provider.verificationStatus === 'PENDING') {
+          <p>This provider already has evidence pending operator review. A new submission cannot be sent until the server returns a review outcome.</p>
+        } @else {
+          <p>Verification submission is unavailable in the server-returned {{ provider.verificationStatus }} state.</p>
+        }
+        @if (verificationSubmission.state() === 'network-error') {
+          <section class="command-state" aria-live="assertive" role="alert"><p>Verification evidence could not reach the server. Retry to send the same submission.</p>@if (verificationSubmission.correlationId()) { <p>Correlation ID: {{ verificationSubmission.correlationId() }}</p> }<button type="button" (click)="retryVerification()">Retry verification submission</button><button type="button" (click)="dismissVerificationOutcome()">Continue editing</button></section>
+        } @else if (verificationSubmission.state() === 'conflict') {
+          <section class="command-state" aria-live="assertive" role="alert"><p>The provider state no longer accepts this verification submission. The form was not resubmitted.</p><button type="button" (click)="refreshAfterVerificationConflict()">Refresh provider status</button><button type="button" (click)="dismissVerificationOutcome()">Continue editing</button></section>
+        } @else if (verificationSubmission.state() === 'succeeded') {
+          @if (verificationSubmission.result(); as result) {
+            <section class="command-state" aria-live="polite" role="status"><p>Evidence submission {{ result.submission.submissionId }} was accepted for pending operator review. This is not verified eligibility.</p><p>Server response: provider version {{ result.submission.providerVersion }}, ETag {{ result.etag }}, {{ result.submission.evidenceCount }} evidence reference(s).</p><p>Refreshing the provider status from the server...</p><button type="button" (click)="dismissVerificationOutcome()">Dismiss submission result</button></section>
+          }
+        } @else if (verificationSubmission.state() === 'error') {
+          <section class="command-state" aria-live="assertive" role="alert">
+            @if (verificationSubmission.problemCode() === 'FORBIDDEN_ROLE') { <p>Only an active provider administrator can submit verification evidence.</p> }
+            @else if (verificationSubmission.problemCode() === 'IDEMPOTENCY_KEY_REUSED') { <p>This submission key was already used with different evidence. Review the form and start a new deliberate submission.</p> }
+            @else if (verificationSubmission.problemCode() === 'VALIDATION_FAILED') { <p>Verification evidence needs the highlighted corrections.</p> }
+            @else { <p>Verification evidence could not be submitted. Check the form and try again.</p> }
+            @if (verificationSubmission.correlationId()) { <p>Correlation ID: {{ verificationSubmission.correlationId() }}</p> }
+            <button type="button" (click)="dismissVerificationOutcome()">Dismiss</button>
           </section>
         }
       </section>

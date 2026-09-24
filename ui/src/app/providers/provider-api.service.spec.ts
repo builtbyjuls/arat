@@ -53,4 +53,23 @@ describe('ProviderApi', () => {
       precondition: { header: 'If-Match', value: '"7"' },
     });
   });
+
+  it('creates and executes an idempotent verification submission intent', () => {
+    const intent = { idempotencyKey: 'verification-key' };
+    const beginIdempotentMutation = vi.fn(() => intent);
+    const executeIdempotent = vi.fn(() => of({ body: null }));
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ providers: [{ provide: ApiHttpClient, useValue: { beginIdempotentMutation, executeIdempotent } }] });
+    const api = TestBed.inject(ProviderApi);
+
+    const submission = api.createVerificationSubmissionIntent('provider/id', { evidenceReferences: ['reference-1'] });
+    api.submitVerification(submission).subscribe();
+
+    expect(beginIdempotentMutation).toHaveBeenCalledWith({
+      method: 'POST',
+      path: '/providers/provider%2Fid/verification-submissions',
+      body: { evidenceReferences: ['reference-1'] },
+    });
+    expect(executeIdempotent).toHaveBeenCalledWith(intent);
+  });
 });

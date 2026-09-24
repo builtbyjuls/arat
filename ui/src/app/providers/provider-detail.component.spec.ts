@@ -1,11 +1,13 @@
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { describe, expect, it, vi } from 'vitest';
-import { of } from 'rxjs';
+import { BehaviorSubject, of } from 'rxjs';
 import { signal } from '@angular/core';
 import { ProviderDetailComponent } from './provider-detail.component';
 import { ProviderDetailService } from './provider-detail.service';
 import { ProviderProfileEditService } from './provider-profile-edit.service';
+import { ProviderVerificationSubmissionService } from './provider-verification-submission.service';
+import { ActorScopeResetService } from '../identity/actor-scope-reset.service';
 
 describe('ProviderDetailComponent', () => {
   it.each(['UNVERIFIED', 'PENDING', 'VERIFIED', 'REJECTED', 'SUSPENDED'])('renders %s with staff-private fields', async (verificationStatus) => {
@@ -33,6 +35,137 @@ describe('ProviderDetailComponent', () => {
     const staff = fakeDetail('ready', 'UNVERIFIED', 'STAFF');
     const staffFixture = await createComponent(staff);
     expect(staffFixture.nativeElement.textContent).not.toContain('Edit provider profile');
+  });
+
+  it('uses exact server verification states with precise status guidance', async () => {
+    const expected = {
+      UNVERIFIED: 'This provider has not submitted evidence for operator review.',
+      PENDING: 'Pending review is not verified eligibility.',
+      VERIFIED: 'Verification is not a safety, licensing, quality, inventory, or availability guarantee.',
+      REJECTED: 'An administrator may submit a new evidence set for review.',
+      SUSPENDED: 'Verification submission is unavailable while suspended.',
+    };
+    for (const [status, guidance] of Object.entries(expected)) {
+      const fixture = await createComponent(fakeDetail('ready', status));
+      expect(fixture.nativeElement.textContent).toContain(`${status}`);
+      expect(fixture.nativeElement.textContent).toContain(guidance);
+    }
+  });
+
+  it('validates plain-text evidence references before creating a submission intent', async () => {
+    const verification = fakeVerificationSubmission();
+    const fixture = await createComponent(fakeDetail('ready', 'UNVERIFIED'), fakeProfileEdit(), verification);
+    const component = fixture.componentInstance;
+
+    component.submitVerification();
+    fixture.detectChanges();
+    expect(verification.submit).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.textContent).toContain('Enter 1 to 256 printable ASCII characters.');
+
+    component.verificationForm.controls.evidenceReferences.at(0).setValue('reference-1');
+    component.addEvidenceReference();
+    component.verificationForm.controls.evidenceReferences.at(1).setValue('reference-1');
+    component.submitVerification();
+    expect(verification.submit).not.toHaveBeenCalled();
+
+    component.verificationForm.controls.evidenceReferences.at(1).setValue('permit-2');
+    component.submitVerification();
+    expect(verification.submit).toHaveBeenCalledWith('provider-1', {
+      evidenceReferences: ['reference-1', 'permit-2'],
+    });
+  });
+
+  it('refreshes provider detail after submission success without claiming verification', async () => {
+    const detail = fakeDetail('ready', 'UNVERIFIED');
+    const verification = fakeVerificationSubmission();
+    verification.state.set('succeeded');
+    verification.result.set({
+      etag: '"3"', exactRetry: false,
+      submission: { providerId: 'provider-1', submissionId: 'submission-1', providerVersion: 3, evidenceCount: 1 },
+    });
+    verification.submit.mockResolvedValue(verification.result());
+    const fixture = await createComponent(detail, fakeProfileEdit(), verification);
+    fixture.componentInstance.verificationForm.controls.evidenceReferences.at(0).setValue('reference-1');
+
+    fixture.componentInstance.submitVerification();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(detail.load).toHaveBeenLastCalledWith('provider-1');
+    expect(fixture.componentInstance.verificationForm.controls.evidenceReferences.length).toBe(1);
+    expect(fixture.componentInstance.verificationForm.controls.evidenceReferences.at(0).value).toBe('');
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('accepted for pending operator review');
+    expect(fixture.nativeElement.textContent).toContain('This is not verified eligibility.');
+  });
+
+  it('explains a source-state conflict and refreshes without resubmitting the stale form', async () => {
+    const detail = fakeDetail('ready', 'UNVERIFIED');
+    const verification = fakeVerificationSubmission();
+    verification.state.set('conflict');
+    verification.problemCode.set('INVALID_PROVIDER_STATE');
+    const fixture = await createComponent(detail, fakeProfileEdit(), verification);
+
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('The provider state no longer accepts this verification submission.');
+    fixture.componentInstance.refreshAfterVerificationConflict();
+    await Promise.resolve();
+    expect(detail.load).toHaveBeenLastCalledWith('provider-1');
+    expect(verification.submit).not.toHaveBeenCalled();
+  });
+
+  it('clears unsent evidence after an actor change', async () => {
+    const fixture = await createComponent(fakeDetail('ready', 'UNVERIFIED'));
+    fixture.componentInstance.verificationForm.controls.evidenceReferences.at(0).setValue('reference-1');
+
+    TestBed.inject(ActorScopeResetService).reset();
+
+    expect(fixture.componentInstance.verificationForm.controls.evidenceReferences.at(0).value).toBe('');
+  });
+
+  it('clears evidence when the provider route changes before it can be submitted to another provider', async () => {
+    const parameters = new BehaviorSubject(convertToParamMap({ providerId: 'provider-1' }));
+    const route = { paramMap: parameters, snapshot: { paramMap: convertToParamMap({ providerId: 'provider-1' }) } };
+    const verification = fakeVerificationSubmission();
+    const fixture = await createComponent(fakeDetail('ready', 'UNVERIFIED'), fakeProfileEdit(), verification, route);
+    fixture.componentInstance.verificationForm.controls.evidenceReferences.at(0).setValue('provider-one-reference');
+
+    route.snapshot.paramMap = convertToParamMap({ providerId: 'provider-2' });
+    parameters.next(route.snapshot.paramMap);
+
+    expect(fixture.componentInstance.verificationForm.controls.evidenceReferences.at(0).value).toBe('');
+    fixture.componentInstance.verificationForm.controls.evidenceReferences.at(0).setValue('provider-two-reference');
+    fixture.componentInstance.submitVerification();
+    expect(verification.submit).toHaveBeenCalledWith('provider-2', { evidenceReferences: ['provider-two-reference'] });
+  });
+
+  it('refreshes authoritative provider state after a successful response lacks its ETag', async () => {
+    const detail = fakeDetail('ready', 'UNVERIFIED');
+    const verification = fakeVerificationSubmission();
+    verification.state.set('refresh-required');
+    verification.problemCode.set('MISSING_PROVIDER_ETAG');
+    const fixture = await createComponent(detail, fakeProfileEdit(), verification);
+    fixture.componentInstance.verificationForm.controls.evidenceReferences.at(0).setValue('reference-1');
+
+    fixture.componentInstance.submitVerification();
+    await Promise.resolve();
+
+    expect(detail.load).toHaveBeenLastCalledWith('provider-1');
+  });
+
+  it('completes refresh-required recovery after a successful manual reload', async () => {
+    const detail = fakeDetail('ready', 'REJECTED');
+    detail.load
+      .mockImplementationOnce(() => { detail.state.set('error'); return Promise.resolve(); })
+      .mockImplementationOnce(() => { detail.state.set('ready'); return Promise.resolve(); });
+    const verification = fakeVerificationSubmission();
+    verification.state.set('refresh-required');
+    const fixture = await createComponent(detail, fakeProfileEdit(), verification);
+
+    fixture.componentInstance.reload();
+    await fixture.whenStable();
+
+    expect(verification.completeRefresh).toHaveBeenCalledWith('provider-1');
   });
 
   it('keeps exact field mapping and preserves a stale edit for deliberate reapply', async () => {
@@ -152,7 +285,12 @@ describe('ProviderDetailComponent', () => {
   });
 });
 
-async function createComponent(detail: ReturnType<typeof fakeDetail>, profileEdit = fakeProfileEdit()) {
+async function createComponent(
+  detail: ReturnType<typeof fakeDetail>,
+  profileEdit = fakeProfileEdit(),
+  verificationSubmission = fakeVerificationSubmission(),
+  route = { paramMap: of(convertToParamMap({ providerId: 'provider-1' })), snapshot: { paramMap: convertToParamMap({ providerId: 'provider-1' }) } },
+) {
   TestBed.resetTestingModule();
   await TestBed.configureTestingModule({
     imports: [ProviderDetailComponent],
@@ -160,7 +298,8 @@ async function createComponent(detail: ReturnType<typeof fakeDetail>, profileEdi
       provideRouter([]),
       { provide: ProviderDetailService, useValue: detail },
       { provide: ProviderProfileEditService, useValue: profileEdit },
-      { provide: ActivatedRoute, useValue: { paramMap: of(convertToParamMap({ providerId: 'provider-1' })), snapshot: { paramMap: convertToParamMap({ providerId: 'provider-1' }) } } },
+      { provide: ProviderVerificationSubmissionService, useValue: verificationSubmission },
+      { provide: ActivatedRoute, useValue: route },
     ],
   }).compileComponents();
   const fixture = TestBed.createComponent(ProviderDetailComponent);
@@ -184,6 +323,17 @@ function fakeProfileEdit() {
     problemCode: signal<string | null>(null),
     violationFor: vi.fn(() => null),
     useProvider: vi.fn(), releaseProvider: vi.fn(), replace: vi.fn().mockResolvedValue(null), retry: vi.fn().mockResolvedValue(null), markRefreshed: vi.fn(() => state.set('reapply-ready')), reapply: vi.fn().mockResolvedValue(null), dismiss: vi.fn(() => state.set('idle')),
+  };
+}
+
+function fakeVerificationSubmission() {
+  return {
+    state: signal<string>('idle'),
+    correlationId: signal<string | null>(null),
+    problemCode: signal<string | null>(null),
+    result: signal<unknown | null>(null),
+    violationFor: vi.fn(() => null),
+    useProvider: vi.fn(), releaseProvider: vi.fn(), submit: vi.fn().mockResolvedValue(null), retry: vi.fn().mockResolvedValue(null), dismiss: vi.fn(), completeRefresh: vi.fn(),
   };
 }
 
