@@ -9,6 +9,46 @@
     </button>
   </div>
 
+  <section class="create-provider" aria-labelledby="create-provider-heading">
+    <h2 id="create-provider-heading">Create a provider organization</h2>
+    <form [formGroup]="createForm" (ngSubmit)="submitCreate()" novalidate>
+      <div class="field">
+        <label for="provider-display-name">Display name</label>
+        <input id="provider-display-name" type="text" formControlName="displayName" maxlength="120" [attr.aria-describedby]="createForm.controls.displayName.touched && createForm.controls.displayName.invalid || providerCreation.violationFor('displayName') ? 'provider-display-name-help provider-display-name-error' : 'provider-display-name-help'">
+        <p id="provider-display-name-help">Use 1 to 120 characters.</p>
+        @if (createForm.controls.displayName.touched && createForm.controls.displayName.invalid) { <p id="provider-display-name-error" class="field-error">Enter a display name of at most 120 characters.</p> }
+        @else if (providerCreation.violationFor('displayName'); as violation) { <p id="provider-display-name-error" class="field-error">{{ violation }}</p> }
+      </div>
+      <fieldset class="field" [attr.aria-describedby]="createForm.controls.supportedCategories.touched && createForm.controls.supportedCategories.invalid || providerCreation.violationFor('supportedCategories') ? 'provider-categories-error' : null">
+        <legend>Supported categories</legend>
+        @for (category of ['COURT', 'KTV', 'GROUP_DINING']; track category) {
+          <label class="checkbox"><input type="checkbox" [checked]="isCategorySelected(category)" (change)="toggleCategory(category, $any($event.target).checked)"> {{ category }}</label>
+        }
+        @if (createForm.controls.supportedCategories.touched && createForm.controls.supportedCategories.invalid) { <p id="provider-categories-error" class="field-error">Select at least one category.</p> }
+        @else if (providerCreation.violationFor('supportedCategories'); as violation) { <p id="provider-categories-error" class="field-error">{{ violation }}</p> }
+      </fieldset>
+      <div class="field">
+        <label for="provider-service-areas">Service area codes</label>
+        <textarea id="provider-service-areas" formControlName="serviceAreaCodes" maxlength="1299" aria-describedby="provider-service-areas-help provider-service-areas-error"></textarea>
+        <p id="provider-service-areas-help">Enter one unique area code per line. Use 1 to 64 characters each, up to 20 codes.</p>
+        @if (createForm.controls.serviceAreaCodes.touched && createForm.controls.serviceAreaCodes.invalid) { <p id="provider-service-areas-error" class="field-error">Enter one to 20 unique area codes, each at most 64 characters.</p> }
+        @else if (providerCreation.violationFor('serviceAreaCodes'); as violation) { <p id="provider-service-areas-error" class="field-error">{{ violation }}</p> }
+      </div>
+      <button type="submit" [disabled]="providerCreation.state() === 'submitting'">{{ providerCreation.state() === 'submitting' ? 'Creating provider organization...' : 'Create provider organization' }}</button>
+    </form>
+    @if (providerCreation.state() === 'network-error') {
+      <section class="command-state" aria-live="assertive" role="alert"><p>Provider creation could not reach the server. Retry to send the same request.</p>@if (providerCreation.correlationId()) { <p>Correlation ID: {{ providerCreation.correlationId() }}</p> }<button type="button" (click)="retryCreate()">Retry creation</button><button type="button" (click)="dismissCreateError()">Start over</button></section>
+    } @else if (providerCreation.state() === 'error') {
+      <section class="command-state" aria-live="assertive" role="alert">
+        @if (providerCreation.problemCode() === 'IDEMPOTENCY_KEY_REUSED') { <p>This creation request conflicts with a previously used idempotency key. Start over with a new request.</p> }
+        @else if (providerCreation.problemCode() === 'VALIDATION_FAILED') { <p>Provider creation needs the highlighted corrections.</p> }
+        @else { <p>Provider creation could not be completed. Check the form and try again.</p> }
+        @if (providerCreation.correlationId()) { <p>Correlation ID: {{ providerCreation.correlationId() }}</p> }
+        <button type="button" (click)="dismissCreateError()">Dismiss</button>
+      </section>
+    }
+  </section>
+
   @if (providerIndex.state() === 'loading') {
     <p class="status" role="status">Loading your provider workspaces...</p>
   } @else if (providerIndex.state() === 'error' && providerIndex.providers().length === 0) {

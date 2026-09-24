@@ -66,8 +66,10 @@ export const routes: Routes = [
   },
   {
     path: 'providers/:providerId',
-    ...privateRoute,
-    data: { requiresIdentity: true, title: 'Provider', summary: 'Provider details will appear here.' },
+    canActivate: [localActorRouteGuard],
+    loadComponent: () => import('./providers/provider-detail.component')
+      .then((component) => component.ProviderDetailComponent),
+    data: { requiresIdentity: true },
   },
   {
     path: 'operations/provider-verifications',

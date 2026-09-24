@@ -1,0 +1,36 @@
+<section aria-labelledby="provider-heading">
+  @if (providerDetail.state() === 'loading') {
+    <h1 id="provider-heading" data-route-heading tabindex="-1">Loading provider organization...</h1>
+    <p class="status" role="status">Loading this provider organization...</p>
+  } @else if (providerDetail.state() === 'not-found') {
+    <h1 id="provider-heading" data-route-heading tabindex="-1">Provider organization unavailable</h1>
+    <section class="state" aria-live="assertive" role="alert"><p>This provider organization is unavailable.</p><a routerLink="/providers">Return to your provider workspaces</a></section>
+  } @else if (providerDetail.state() === 'error') {
+    <h1 id="provider-heading" data-route-heading tabindex="-1">Provider organization unavailable</h1>
+    <section class="state" aria-live="assertive" role="alert">
+      <p>This provider organization could not be loaded. Try again.</p>
+      @if (providerDetail.correlationId()) { <p>Correlation ID: {{ providerDetail.correlationId() }}</p> }
+      <button type="button" (click)="reload()">Reload provider organization</button>
+      <a routerLink="/providers">Return to your provider workspaces</a>
+    </section>
+  } @else if (providerDetail.provider(); as provider) {
+    <div class="heading-row">
+      <div>
+        <h1 id="provider-heading" data-route-heading tabindex="-1">{{ provider.displayName }}</h1>
+        <p class="role-label">Your staff role: {{ roleLabel(provider.callerStaffRole) }}</p>
+      </div>
+      <button type="button" (click)="reload()">Reload provider organization</button>
+    </div>
+    <section class="provider-profile" aria-labelledby="provider-profile-heading">
+      <h2 id="provider-profile-heading">Provider profile</h2>
+      <dl>
+        <div><dt>Verification status</dt><dd>{{ provider.verificationStatus }}</dd></div>
+        <div><dt>Provider version</dt><dd>{{ provider.version }}</dd></div>
+        <div><dt>Supported categories</dt><dd>{{ provider.supportedCategories?.join(', ') }}</dd></div>
+        <div><dt>Service area codes</dt><dd>{{ provider.serviceAreaCodes?.join(', ') }}</dd></div>
+      </dl>
+      <p>Verification is an operator review. It is not a guarantee of safety, licensing, service quality, inventory, or availability.</p>
+    </section>
+    <a class="back-link" routerLink="/providers">Return to your provider workspaces</a>
+  }
+</section>

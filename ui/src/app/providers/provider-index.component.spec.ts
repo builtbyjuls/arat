@@ -1,8 +1,9 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { describe, expect, it, vi } from 'vitest';
 import { ProviderIndexComponent } from './provider-index.component';
+import { ProviderCreationService } from './provider-creation.service';
 import { ProviderIndexService } from './provider-index.service';
 
 describe('ProviderIndexComponent', () => {
@@ -45,17 +46,72 @@ describe('ProviderIndexComponent', () => {
     expect(getComputedStyle(fixture.nativeElement.querySelector('button')).minHeight).toBe('44px');
     expect(providerIndex.loadMore).toHaveBeenCalledOnce();
   });
+
+  it('validates mobile provider fields, creates once, refreshes the index, and navigates from Location', async () => {
+    const providerIndex = fakeProviderIndex({ state: 'empty' });
+    const creation = fakeProviderCreation('/api/v1/providers/provider-1');
+    const fixture = await createComponent(providerIndex, creation);
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+
+    fixture.componentInstance.submitCreate();
+    expect(creation.create).not.toHaveBeenCalled();
+    fixture.componentInstance.createForm.controls.displayName.setValue(' BGC Courts ');
+    fixture.componentInstance.toggleCategory('COURT', true);
+    fixture.componentInstance.createForm.controls.serviceAreaCodes.setValue(' BGC \n MAKATI ');
+    fixture.componentInstance.submitCreate();
+    await Promise.resolve();
+
+    expect(creation.create).toHaveBeenCalledWith({ displayName: 'BGC Courts', supportedCategories: ['COURT'], serviceAreaCodes: ['BGC', 'MAKATI'] });
+    expect(providerIndex.refresh).toHaveBeenCalledTimes(2);
+    expect(navigate).toHaveBeenCalledWith(['/providers', 'provider-1']);
+    expect(getComputedStyle(fixture.nativeElement.querySelector('#provider-display-name')).minHeight).toBe('44px');
+  });
+
+  it('ends an in-flight creation when leaving the provider form', async () => {
+    const providerIndex = fakeProviderIndex({ state: 'empty' });
+    let resolveCreate: (result: { location: string } | null) => void = () => undefined;
+    const creation = fakeProviderCreation();
+    creation.create.mockImplementation(() => new Promise((resolve) => { resolveCreate = resolve; }));
+    const fixture = await createComponent(providerIndex, creation);
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+    fixture.componentInstance.createForm.controls.displayName.setValue('BGC Courts');
+    fixture.componentInstance.toggleCategory('COURT', true);
+    fixture.componentInstance.createForm.controls.serviceAreaCodes.setValue('BGC');
+
+    fixture.componentInstance.submitCreate();
+    fixture.destroy();
+    resolveCreate({ location: '/api/v1/providers/provider-1' });
+    await Promise.resolve();
+
+    expect(creation.dismissError).toHaveBeenCalledOnce();
+    expect(navigate).not.toHaveBeenCalled();
+  });
 });
 
-async function createComponent(providerIndex: ReturnType<typeof fakeProviderIndex>) {
+async function createComponent(providerIndex: ReturnType<typeof fakeProviderIndex>, providerCreation = fakeProviderCreation()) {
   await TestBed.configureTestingModule({
     imports: [ProviderIndexComponent],
-    providers: [provideRouter([]), { provide: ProviderIndexService, useValue: providerIndex }],
+    providers: [provideRouter([]), { provide: ProviderIndexService, useValue: providerIndex }, { provide: ProviderCreationService, useValue: providerCreation }],
   }).compileComponents();
   const fixture = TestBed.createComponent(ProviderIndexComponent);
   fixture.detectChanges();
   await fixture.whenStable();
   return fixture;
+}
+
+function fakeProviderCreation(location: string | null = null) {
+  return {
+    state: signal<'error' | 'idle' | 'network-error' | 'submitting'>('idle'),
+    correlationId: signal<string | null>(null),
+    problemCode: signal<string | null>(null),
+    violationFor: vi.fn((_field: string): string | null => null),
+    create: vi.fn().mockResolvedValue(location === null ? null : { location }),
+    retry: vi.fn().mockResolvedValue(null),
+    dismissError: vi.fn(),
+    reportMissingLocation: vi.fn(),
+  };
 }
 
 function fakeProviderIndex(initial: {

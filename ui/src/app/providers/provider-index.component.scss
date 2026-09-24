@@ -31,7 +31,8 @@ button {
 }
 
 .provider-card,
-.state {
+.state,
+.create-provider {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 0.5rem;
@@ -39,6 +40,41 @@ button {
   overflow-wrap: anywhere;
   padding: var(--space-4);
 }
+
+.create-provider {
+  margin-top: var(--space-6);
+}
+
+.create-provider form,
+.field {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.create-provider input,
+.create-provider textarea,
+.create-provider button {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-height: 44px;
+}
+
+.field {
+  border: 0;
+  margin: var(--space-4) 0 0;
+  padding: 0;
+}
+
+.checkbox {
+  align-items: center;
+  display: flex;
+  gap: var(--space-2);
+  min-height: 44px;
+}
+
+.checkbox input { min-height: auto; }
+.field-error { color: var(--color-error); margin: 0; }
+.command-state { margin-top: var(--space-4); }
 
 .provider-card {
   color: var(--color-text);
