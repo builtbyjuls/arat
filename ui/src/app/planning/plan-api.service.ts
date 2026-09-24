@@ -7,6 +7,7 @@ import {
   ApiHttpResult,
   IdempotentMutationIntent,
   ifMatch,
+  ifNoneMatch,
 } from '../api/api-http-client';
 
 export type CreatePlanRequest = components['schemas']['CreatePlanRequest'];
@@ -16,6 +17,9 @@ export type PlanRepresentation = components['schemas']['PlanRepresentation'];
 export type PlanSummary = components['schemas']['PlanSummaryRepresentation'];
 export type PlanRequirements = components['schemas']['PlanRequirements'];
 export type RequirementReplacementRequest = components['schemas']['RequirementReplacementRequest'];
+export type CreatePreferenceRequest = components['schemas']['CreatePreferenceRequest'];
+export type PlanPreference = components['schemas']['PlanPreference'];
+export type PreferenceCollection = components['schemas']['PreferenceCollectionRepresentation'];
 
 const PLAN_PAGE_LIMIT = 20;
 
@@ -45,6 +49,27 @@ export class PlanApi {
       path: `/plans/${encodeURIComponent(planId)}/requirements`,
       body: request,
       precondition: ifMatch(etag),
+    });
+  }
+
+  readOwnPreference(planId: string): Observable<ApiHttpResult<PlanPreference>> {
+    return this.#api.read<PlanPreference>(`/plans/${encodeURIComponent(planId)}/members/me/preference`);
+  }
+
+  listPreferences(planId: string): Observable<ApiHttpResult<PreferenceCollection>> {
+    return this.#api.read<PreferenceCollection>(`/plans/${encodeURIComponent(planId)}/preferences`);
+  }
+
+  putPreference(
+    planId: string,
+    request: CreatePreferenceRequest,
+    etag: string | null,
+  ): Observable<ApiHttpResult<PlanPreference>> {
+    return this.#api.mutate<PlanPreference, CreatePreferenceRequest>({
+      method: 'PUT',
+      path: `/plans/${encodeURIComponent(planId)}/members/me/preference`,
+      body: request,
+      precondition: etag === null ? ifNoneMatch() : ifMatch(etag),
     });
   }
 

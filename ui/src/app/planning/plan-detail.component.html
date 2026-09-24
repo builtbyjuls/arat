@@ -30,7 +30,7 @@
         <p>Plan version: {{ plan.version ?? 'Unavailable' }}</p>
         <p class="stale-indicator" role="status">Showing the last server response. Refresh before taking a later action.</p>
       </div>
-      <button type="button" (click)="refresh()" [disabled]="requirementEdit.state() === 'conflict' || requirementEdit.state() === 'network-error' || requirementEdit.state() === 'reapply-ready' || requirementEdit.state() === 'submitting'">Refresh plan</button>
+      <button type="button" (click)="refresh()" [disabled]="requirementEdit.state() === 'conflict' || requirementEdit.state() === 'network-error' || requirementEdit.state() === 'reapply-ready' || requirementEdit.state() === 'submitting' || preferences.saveState() === 'submitting'">Refresh plan</button>
     </div>
 
     <section class="detail-card" aria-labelledby="requirements-heading">
@@ -130,10 +130,150 @@
       }
     </section>
 
+    <section class="detail-card preference-editor" aria-labelledby="preference-editor-heading">
+      <h2 id="preference-editor-heading">My preference</h2>
+      <p>Your preference is advisory input for this group. It is not a vote, consent, or an automatic change to the plan.</p>
+      @if (preferences.ownState() === 'loading') {
+        <p class="status" role="status">Loading your preference...</p>
+      } @else if (preferences.ownState() === 'error') {
+        <section class="command-state" aria-live="assertive" role="alert">
+          <p>Your preference could not be loaded. Refresh the plan before submitting a change.</p>
+          <button type="button" (click)="refreshPreferenceConflict()">Refresh preference</button>
+        </section>
+      } @else if (!preferenceFormReady()) {
+        <p class="status" role="status">Preparing your preference...</p>
+      } @else {
+        <form [formGroup]="preferenceForm" (ngSubmit)="submitPreference()">
+          <div class="preference-fields">
+            <label for="preference-attendance">Attendance</label>
+            <select id="preference-attendance" formControlName="attendance" [attr.aria-errormessage]="preferenceViolations('attendance').length > 0 ? 'preference-attendance-server-errors' : null" [attr.aria-invalid]="preferenceViolations('attendance').length > 0 ? 'true' : null">
+              <option value="INTERESTED">Interested</option>
+              <option value="AVAILABLE">Available</option>
+              <option value="JOINING">Joining</option>
+              <option value="NOT_JOINING">Not joining</option>
+            </select>
+            @if (preferenceViolations('attendance'); as violations) {
+              @if (violations.length > 0) { <div id="preference-attendance-server-errors" class="field-error" role="alert">@for (violation of violations; track violation.field + violation.message) { <p>{{ violation.message }}</p> }</div> }
+            }
+
+            <label for="preference-guests">Guest count</label>
+            <input id="preference-guests" type="number" min="0" max="20" formControlName="guestCount" aria-describedby="preference-guests-help" [attr.aria-errormessage]="preferenceViolations('guestCount').length > 0 ? 'preference-guests-server-errors' : null" [attr.aria-invalid]="preferenceViolations('guestCount').length > 0 ? 'true' : null" />
+            <p id="preference-guests-help">Guests are in addition to you. Use zero when not joining.</p>
+            @if (preferenceForm.hasError('notJoiningGuests') && preferenceForm.controls.guestCount.touched) {
+              <p class="field-error" role="alert">Guest count must be zero when not joining.</p>
+            }
+            @if (preferenceViolations('guestCount'); as violations) {
+              @if (violations.length > 0) { <div id="preference-guests-server-errors" class="field-error" role="alert">@for (violation of violations; track violation.field + violation.message) { <p>{{ violation.message }}</p> }</div> }
+            }
+
+            <fieldset [attr.aria-errormessage]="preferenceViolations('selectedWindowIds').length > 0 ? 'preference-windows-server-errors' : null">
+              <legend>Selected windows</legend>
+              @if ((plan.requirements?.candidateWindows?.length ?? 0) > 0) {
+                @for (window of plan.requirements?.candidateWindows ?? []; track window.id) {
+                  @if (window.id) {
+                    <label class="choice"><input type="checkbox" [checked]="preferenceForm.controls.selectedWindowIds.value.includes(window.id)" (change)="togglePreferenceWindow(window.id, $any($event.target).checked)" /> {{ formatWindow(window.startAt, plan.requirements?.timeZone) }} to {{ formatWindow(window.endAt, plan.requirements?.timeZone) }}</label>
+                  }
+                }
+              } @else { <p>No candidate windows are available.</p> }
+              @for (retiredWindowId of retiredPreferenceWindowIds(); track retiredWindowId) {
+                <label class="choice retired-choice"><input type="checkbox" checked (change)="togglePreferenceWindow(retiredWindowId, $any($event.target).checked)" /> A previously selected window is no longer active. Uncheck to remove it: {{ retiredWindowId }}</label>
+              }
+            </fieldset>
+            @if (preferenceViolations('selectedWindowIds'); as violations) {
+              @if (violations.length > 0) { <div id="preference-windows-server-errors" class="field-error" role="alert">@for (violation of violations; track violation.field + violation.message) { <p>{{ violation.message }}</p> }</div> }
+            }
+
+            <label class="choice"><input type="checkbox" formControlName="personalBudgetEnabled" (change)="updatePreferenceValidation()" /> Add a personal PHP budget</label>
+            @if (preferenceForm.controls.personalBudgetEnabled.value) {
+              <label for="preference-budget">Personal budget in PHP</label>
+              <input id="preference-budget" type="text" inputmode="decimal" formControlName="personalBudgetAmount" aria-describedby="preference-budget-help" [attr.aria-errormessage]="preferenceViolations('personalBudget.amount').length > 0 ? 'preference-budget-server-errors' : null" [attr.aria-invalid]="preferenceViolations('personalBudget.amount').length > 0 ? 'true' : null" />
+              <p id="preference-budget-help">Use an exact amount with two decimal places, for example 500.00.</p>
+              @if (preferenceForm.controls.personalBudgetAmount.invalid && preferenceForm.controls.personalBudgetAmount.touched) {
+                <p class="field-error" role="alert">Enter a PHP amount from 0.00 to 1000000.00.</p>
+              }
+              @if (preferenceViolations('personalBudget.amount'); as violations) {
+                @if (violations.length > 0) { <div id="preference-budget-server-errors" class="field-error" role="alert">@for (violation of violations; track violation.field + violation.message) { <p>{{ violation.message }}</p> }</div> }
+              }
+            }
+
+            <label for="preference-rankings">Ranked preferences</label>
+            <textarea id="preference-rankings" rows="4" formControlName="rankedPreferences" aria-describedby="preference-rankings-help" [attr.aria-errormessage]="preferenceViolations('rankedPreferences').length > 0 ? 'preference-rankings-server-errors' : null" [attr.aria-invalid]="preferenceViolations('rankedPreferences').length > 0 ? 'true' : null"></textarea>
+            <p id="preference-rankings-help">Enter one preference per line, in rank order. You can add up to 10 unique preferences.</p>
+            @if (preferenceForm.controls.rankedPreferences.invalid && preferenceForm.controls.rankedPreferences.touched) {
+              <p class="field-error" role="alert">Each preference must be unique and no longer than 80 characters.</p>
+            }
+            @if (preferenceViolations('rankedPreferences'); as violations) {
+              @if (violations.length > 0) { <div id="preference-rankings-server-errors" class="field-error" role="alert">@for (violation of violations; track violation.field + violation.message) { <p>{{ violation.message }}</p> }</div> }
+            }
+
+            <label for="preference-note">Private note</label>
+            <textarea id="preference-note" rows="4" maxlength="1000" formControlName="privateNote" [attr.aria-errormessage]="preferenceViolations('privateNote').length > 0 ? 'preference-note-server-errors' : null" [attr.aria-invalid]="preferenceViolations('privateNote').length > 0 ? 'true' : null"></textarea>
+            @if (preferenceViolations('privateNote'); as violations) {
+              @if (violations.length > 0) { <div id="preference-note-server-errors" class="field-error" role="alert">@for (violation of violations; track violation.field + violation.message) { <p>{{ violation.message }}</p> }</div> }
+            }
+          </div>
+          <button type="submit" class="primary-action" [disabled]="preferences.saveState() === 'submitting' || plan.state === 'CANCELLED'">
+            {{ preferences.saveState() === 'submitting' ? 'Saving preference...' : preferences.preferenceEtag() === null ? 'Save preference' : 'Update preference' }}
+          </button>
+        </form>
+
+        @if (preferences.saveState() === 'conflict') {
+          <section class="command-state" aria-live="assertive" role="alert">
+            @if (preferences.problemCode() === 'REQUIREMENT_VERSION_CHANGED') {
+              <p>The plan requirements changed, so this preference uses an outdated plan basis. Your fields are preserved.</p>
+            } @else {
+              <p>Your preference changed elsewhere. Your fields are preserved and were not overwritten.</p>
+            }
+            <p>Refresh the current plan and preference, review your fields, then deliberately submit again.</p>
+            <button type="button" (click)="refreshPreferenceConflict()">Refresh current preference</button>
+          </section>
+        } @else if (preferences.saveState() === 'error') {
+          <section class="command-state" aria-live="assertive" role="alert">
+            @if (preferences.problemCode() === 'VALIDATION_FAILED') {
+              <p>Your preference needs the highlighted corrections.</p>
+              @if (preferenceUnassociatedViolations(); as violations) {
+                @if (violations.length > 0) { <ul class="validation-summary" aria-label="Preference validation errors">@for (violation of violations; track violation.field + violation.message) { <li><span class="violation-field">{{ violation.field }}:</span> {{ violation.message }}</li> }</ul> }
+              }
+            } @else if (preferences.problemCode() === 'PRIVATE_RESOURCE_NOT_FOUND') {
+              <p>This plan is unavailable.</p>
+            } @else if (preferences.problemCode() === 'INVALID_PLAN_STATE') {
+              <p>This plan no longer accepts preferences. Refresh to see its current state.</p>
+            } @else {
+              <p>Your preference could not be saved. Review the form and try again.</p>
+            }
+            @if (preferences.correlationId()) { <p>Correlation ID: {{ preferences.correlationId() }}</p> }
+            <button type="button" (click)="dismissPreferenceError()">Dismiss</button>
+          </section>
+        }
+      }
+    </section>
+
+    <section class="detail-card preference-summary" aria-labelledby="preference-summary-heading">
+      <h2 id="preference-summary-heading">Group preference summary</h2>
+      <p>These are advisory member inputs for this private group. They do not count as consent, votes, or an automatic plan decision.</p>
+      @if (preferences.summaryState() === 'loading') {
+        <p class="status" role="status">Loading group preference summary...</p>
+      } @else if (preferences.summaryState() === 'error') {
+        <p role="alert">The group preference summary is unavailable. Refresh the plan to try again.</p>
+      } @else if ((preferences.summary()?.items?.length ?? 0) === 0) {
+        <p>No member preferences have been shared with the group.</p>
+      } @else {
+        <ul class="preference-list">
+          @for (entry of preferences.summary()?.items ?? []; track entry.preference?.accountId) {
+            <li>
+              <p><strong>Member {{ entry.preference?.accountId ?? 'unavailable' }}</strong></p>
+              <p>{{ entry.preference?.attendance ?? 'Attendance unavailable' }}; guests: {{ entry.preference?.guestCount ?? 'unavailable' }}; selected windows: {{ entry.preference?.selectedWindowIds?.length ?? 0 }}</p>
+              <p [class.stale-preference]="entry.current === false">{{ entry.current === false ? 'Stale preference: based on an earlier plan version.' : 'Current preference: based on this plan version.' }}</p>
+            </li>
+          }
+        </ul>
+      }
+    </section>
+
     <section class="detail-card" aria-labelledby="actions-heading">
       <h2 id="actions-heading">Action availability</h2>
       <p>{{ actionGuidance(plan.state) }}</p>
-      <p>Member action: sharing availability and preferences will appear here in a later step.</p>
+      <p>Member action: sharing availability and preferences is advisory input and does not decide the plan.</p>
       <p>Organizer-only actions are requirement changes, finalization, publication, and cancellation. The server verifies organizer authority when those actions are available.</p>
     </section>
   }

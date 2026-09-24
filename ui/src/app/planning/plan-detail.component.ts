@@ -1,15 +1,24 @@
 import { KeyValuePipe } from '@angular/common';
-import { Component, OnDestroy, OnInit, inject } from '@angular/core';
+import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { ReactiveFormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { PlanDetailService } from './plan-detail.service';
 import { PlanRequirementEditService } from './plan-requirement-edit.service';
 import { PlanRequirementFieldsComponent } from './plan-requirement-fields.component';
+import { PlanPreferenceService } from './plan-preference.service';
+import { ActorScopeResetService } from '../identity/actor-scope-reset.service';
 import {
   createRequirementForm,
   createRequirementReplacementRequest,
   hydrateRequirementForm,
 } from './plan-requirement-form';
+import {
+  createPreferenceForm,
+  createPreferenceRequest,
+  hydratePreferenceForm,
+  togglePreferenceWindow,
+  updatePreferenceValidation,
+} from './plan-preference-form';
 
 @Component({
   imports: [KeyValuePipe, PlanRequirementFieldsComponent, ReactiveFormsModule, RouterLink],
@@ -20,15 +29,27 @@ import {
 export class PlanDetailComponent implements OnDestroy, OnInit {
   readonly planDetail = inject(PlanDetailService);
   readonly requirementEdit = inject(PlanRequirementEditService);
+  readonly preferences = inject(PlanPreferenceService);
+  readonly #scopeReset = inject(ActorScopeResetService);
   readonly #route = inject(ActivatedRoute);
   readonly editForm = createRequirementForm();
+  readonly preferenceForm = createPreferenceForm();
+  readonly preferenceFormReady = signal(false);
   #destroyed = false;
+  #preferenceFormPlanId: string | null = null;
+  #unregisterScopeReset: (() => void) | null = null;
 
   ngOnInit(): void {
+    this.#unregisterScopeReset = this.#scopeReset.register(() => {
+      this.#preferenceFormPlanId = null;
+      this.preferenceFormReady.set(false);
+      hydratePreferenceForm(this.preferenceForm, null);
+    });
     this.#route.paramMap.subscribe((params) => {
       const planId = params.get('planId');
       if (planId !== null) {
         this.requirementEdit.usePlan(planId);
+        this.preferences.usePlan(planId);
         void this.loadAndHydrate(planId);
       }
     });
@@ -36,9 +57,12 @@ export class PlanDetailComponent implements OnDestroy, OnInit {
 
   ngOnDestroy(): void {
     this.#destroyed = true;
+    this.#unregisterScopeReset?.();
+    this.#unregisterScopeReset = null;
     const planId = this.planId();
     if (planId !== null) {
       this.requirementEdit.releasePlan(planId);
+      this.preferences.releasePlan(planId);
     }
   }
 
@@ -99,6 +123,83 @@ export class PlanDetailComponent implements OnDestroy, OnInit {
     this.requirementEdit.dismiss();
   }
 
+  submitPreference(): void {
+    const plan = this.planDetail.plan();
+    const planId = this.planId();
+    const planVersion = plan?.version;
+    updatePreferenceValidation(this.preferenceForm);
+    if (plan === null || planId === null || typeof planVersion !== 'number' || !Number.isInteger(planVersion) || this.preferenceForm.invalid) {
+      this.preferenceForm.markAllAsTouched();
+      return;
+    }
+    const request = createPreferenceRequest(this.preferenceForm, planVersion);
+    void this.preferences.save(planId, request).then((preference) => {
+      if (preference !== null && !this.#destroyed && this.planId() === planId) {
+        hydratePreferenceForm(this.preferenceForm, preference);
+      } else if (
+        preference === null
+        && this.preferences.problemCode() === 'PRIVATE_RESOURCE_NOT_FOUND'
+        && this.planId() === planId
+      ) {
+        this.planDetail.discardInaccessiblePlan(planId);
+      }
+    });
+  }
+
+  togglePreferenceWindow(windowId: string, selected: boolean): void {
+    togglePreferenceWindow(this.preferenceForm, windowId, selected);
+  }
+
+  updatePreferenceValidation(): void {
+    updatePreferenceValidation(this.preferenceForm);
+  }
+
+  retiredPreferenceWindowIds(): readonly string[] {
+    const activeWindowIds = new Set(
+      (this.planDetail.plan()?.requirements?.candidateWindows ?? [])
+        .map((window) => window.id)
+        .filter((windowId): windowId is string => typeof windowId === 'string'),
+    );
+    return this.preferenceForm.controls.selectedWindowIds.value
+      .filter((windowId) => !activeWindowIds.has(windowId));
+  }
+
+  preferenceViolations(field: string): readonly { field: string; message: string }[] {
+    return this.preferences.violations().filter((violation) => violation.field === field);
+  }
+
+  preferenceUnassociatedViolations(): readonly { field: string; message: string }[] {
+    const associatedFields = new Set([
+      'attendance', 'guestCount', 'selectedWindowIds', 'personalBudget', 'personalBudget.amount',
+      'rankedPreferences', 'privateNote',
+    ]);
+    return this.preferences.violations().filter((violation) => !associatedFields.has(violation.field));
+  }
+
+  refreshPreferenceConflict(): void {
+    const planId = this.planId();
+    if (planId === null) {
+      return;
+    }
+    void Promise.all([this.planDetail.load(planId), this.preferences.load(planId)]).then(() => {
+      if (!this.#destroyed && this.planId() === planId && this.planDetail.state() === 'ready') {
+        if (
+          this.#preferenceFormPlanId === null
+          && (this.preferences.ownState() === 'ready' || this.preferences.ownState() === 'absent')
+        ) {
+          hydratePreferenceForm(this.preferenceForm, this.preferences.ownPreference());
+          this.#preferenceFormPlanId = planId;
+          this.preferenceFormReady.set(true);
+        }
+        this.preferences.dismiss();
+      }
+    });
+  }
+
+  dismissPreferenceError(): void {
+    this.preferences.dismiss();
+  }
+
   stateLabel(state: string | undefined): string {
     return ({
       COLLABORATING: 'Collaborating',
@@ -128,6 +229,9 @@ export class PlanDetailComponent implements OnDestroy, OnInit {
   attributeValue(value: unknown): string { return String(value); }
 
   private async loadAndHydrate(planId: string): Promise<void> {
+    if (this.#preferenceFormPlanId !== planId) {
+      this.preferenceFormReady.set(false);
+    }
     await this.planDetail.load(planId);
     if (this.#destroyed || this.planId() !== planId) {
       return;
@@ -138,6 +242,21 @@ export class PlanDetailComponent implements OnDestroy, OnInit {
         hydrateRequirementForm(this.editForm, plan);
       } catch {
         this.editForm.controls.candidateWindows.setErrors({ invalidLocalDateTime: true });
+      }
+      await this.preferences.load(planId);
+      if (this.preferences.summaryProblemCode() === 'PRIVATE_RESOURCE_NOT_FOUND') {
+        this.planDetail.discardInaccessiblePlan(planId);
+        return;
+      }
+      if (
+        !this.#destroyed
+        && this.planId() === planId
+        && this.#preferenceFormPlanId !== planId
+        && (this.preferences.ownState() === 'ready' || this.preferences.ownState() === 'absent')
+      ) {
+        hydratePreferenceForm(this.preferenceForm, this.preferences.ownPreference());
+        this.#preferenceFormPlanId = planId;
+        this.preferenceFormReady.set(true);
       }
     }
   }

@@ -6,6 +6,8 @@ import { signal } from '@angular/core';
 import { PlanDetailComponent } from './plan-detail.component';
 import { PlanDetailService } from './plan-detail.service';
 import { PlanRequirementEditService } from './plan-requirement-edit.service';
+import { PlanPreferenceService } from './plan-preference.service';
+import { ActorScopeResetService } from '../identity/actor-scope-reset.service';
 
 describe('PlanDetailComponent', () => {
   it('renders a private unavailable state without raw problem details', async () => {
@@ -38,6 +40,111 @@ describe('PlanDetailComponent', () => {
     expect(root.textContent).toContain('Showing the last server response. Refresh before taking a later action.');
     expect(root.querySelector<HTMLButtonElement>('button')?.textContent).toContain('Refresh plan');
     expect(root.querySelector('.detail-card')).not.toBeNull();
+  });
+
+  it('renders the private group preference summary as advisory and marks stale input', async () => {
+    const preferences = fakePreferences();
+    preferences.summary.set({
+      items: [{
+        current: false,
+        preference: {
+          accountId: 'member-2', attendance: 'JOINING', guestCount: 1,
+          selectedWindowIds: ['window-1'], basisPlanVersion: 6, version: 2,
+          personalBudget: { currency: 'PHP', amount: '500.00' },
+          rankedPreferences: ['parking'], privateNote: 'Do not show this in the summary.',
+        },
+      }],
+    });
+    const fixture = await createComponent(fakeDetail('ready'), fakeEdit(), preferences);
+    const text = (fixture.nativeElement as HTMLElement).textContent;
+    const summaryText = (fixture.nativeElement as HTMLElement).querySelector('.preference-summary')?.textContent;
+
+    expect(text).toContain('These are advisory member inputs for this private group.');
+    expect(text).toContain('Member member-2');
+    expect(text).toContain('Stale preference: based on an earlier plan version.');
+    expect(summaryText).not.toContain('Do not show this in the summary.');
+    expect(summaryText).not.toContain('500.00');
+  });
+
+  it('clears an in-memory preference form when the local actor changes', async () => {
+    const fixture = await createComponent(fakeDetail('ready'));
+    fixture.componentInstance.preferenceForm.patchValue({ privateNote: 'Ari private note' });
+
+    TestBed.inject(ActorScopeResetService).reset();
+
+    expect(fixture.componentInstance.preferenceForm.controls.privateNote.value).toBe('');
+  });
+
+  it('hydrates an existing preference after its initial read recovers', async () => {
+    const preferences = fakePreferences();
+    preferences.ownState.set('error');
+    const fixture = await createComponent(fakeDetail('ready'), fakeEdit(), preferences);
+    preferences.ownState.set('ready');
+    preferences.ownPreference.set({
+      attendance: 'JOINING', guestCount: 1, selectedWindowIds: ['window-1'],
+      personalBudget: { currency: 'PHP', amount: '500.00' }, rankedPreferences: ['parking'], privateNote: 'Recovered note',
+    });
+
+    fixture.componentInstance.refreshPreferenceConflict();
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.preferenceForm.controls.privateNote.value).toBe('Recovered note');
+    expect(fixture.componentInstance.preferenceForm.controls.personalBudgetAmount.value).toBe('500.00');
+  });
+
+  it('shows a retired selected window so the member can deliberately remove it', async () => {
+    const fixture = await createComponent(fakeDetail('ready'));
+    fixture.componentInstance.preferenceForm.controls.selectedWindowIds.setValue(['retired-window']);
+    fixture.detectChanges();
+
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('A previously selected window is no longer active.');
+    fixture.componentInstance.togglePreferenceWindow('retired-window', false);
+    expect(fixture.componentInstance.preferenceForm.controls.selectedWindowIds.value).toEqual([]);
+  });
+
+  it('renders safe server validation errors next to fields and in the fallback summary', async () => {
+    const preferences = fakePreferences();
+    preferences.saveState.set('error');
+    preferences.problemCode.set('VALIDATION_FAILED');
+    preferences.violations.set([
+      { field: 'guestCount', message: 'Guest count is invalid.' },
+      { field: 'unexpected', message: 'Review this server-only field.' },
+    ]);
+    const fixture = await createComponent(fakeDetail('ready'), fakeEdit(), preferences);
+    fixture.componentInstance.preferenceFormReady.set(true);
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+
+    expect(root.textContent).toContain('Your preference needs the highlighted corrections.');
+    expect(root.querySelector('#preference-guests-server-errors')?.textContent).toContain('Guest count is invalid.');
+    expect(root.querySelector('#preference-guests')?.getAttribute('aria-errormessage')).toBe('preference-guests-server-errors');
+    expect(root.querySelector('.validation-summary')?.textContent).toContain('Review this server-only field.');
+  });
+
+  it('keeps the form unavailable until both preference reads finish and fields hydrate', async () => {
+    let completeLoad!: () => void;
+    const preferences = fakePreferences();
+    preferences.ownState.set('ready');
+    preferences.ownPreference.set({
+      attendance: 'JOINING', guestCount: 2, selectedWindowIds: ['window-1'],
+      rankedPreferences: ['parking'], privateNote: 'Stored note',
+    });
+    preferences.summaryState.set('loading');
+    preferences.load.mockImplementation(() => new Promise<void>((resolve) => { completeLoad = resolve; }));
+    const fixture = await createComponent(fakeDetail('ready'), fakeEdit(), preferences, false);
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.preferenceFormReady()).toBe(false);
+    expect((fixture.nativeElement as HTMLElement).querySelector('.preference-editor form')).toBeNull();
+
+    completeLoad();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.preferenceFormReady()).toBe(true);
+    expect(fixture.componentInstance.preferenceForm.controls.attendance.value).toBe('JOINING');
+    expect(fixture.componentInstance.preferenceForm.controls.privateNote.value).toBe('Stored note');
   });
 
   it('loads the plan on deep-link initialization and refreshes the same canonical resource', async () => {
@@ -199,7 +306,12 @@ describe('PlanDetailComponent', () => {
   });
 });
 
-async function createComponent(detail: ReturnType<typeof fakeDetail>, edit = fakeEdit()) {
+async function createComponent(
+  detail: ReturnType<typeof fakeDetail>,
+  edit = fakeEdit(),
+  preferences = fakePreferences(),
+  awaitStable = true,
+) {
   await TestBed.configureTestingModule({
     imports: [PlanDetailComponent],
     providers: [
@@ -207,13 +319,36 @@ async function createComponent(detail: ReturnType<typeof fakeDetail>, edit = fak
       { provide: ActivatedRoute, useValue: { paramMap: of(convertToParamMap({ planId: 'plan-1' })), snapshot: { paramMap: convertToParamMap({ planId: 'plan-1' }) } } },
       { provide: PlanDetailService, useValue: detail },
       { provide: PlanRequirementEditService, useValue: edit },
+      { provide: PlanPreferenceService, useValue: preferences },
     ],
   }).compileComponents();
   const fixture = TestBed.createComponent(PlanDetailComponent);
   fixture.detectChanges();
-  await fixture.whenStable();
+  if (awaitStable) {
+    await fixture.whenStable();
+  }
   fixture.detectChanges();
   return fixture;
+}
+
+function fakePreferences() {
+  return {
+    ownState: signal<'absent' | 'error' | 'loading' | 'ready'>('absent'),
+    ownPreference: signal<object | null>(null),
+    preferenceEtag: signal<string | null>(null),
+    summaryState: signal<'absent' | 'error' | 'loading' | 'ready'>('ready'),
+    summary: signal<{ items: object[] }>({ items: [] }),
+    summaryProblemCode: signal<string | null>(null),
+    saveState: signal<'conflict' | 'error' | 'idle' | 'submitting'>('idle'),
+    problemCode: signal<string | null>(null),
+    correlationId: signal<string | null>(null),
+    violations: signal<readonly { field: string; message: string }[]>([]),
+    usePlan: vi.fn(),
+    releasePlan: vi.fn(),
+    load: vi.fn().mockResolvedValue(undefined),
+    save: vi.fn().mockResolvedValue(null),
+    dismiss: vi.fn(),
+  };
 }
 
 function fakeDetail(state: 'error' | 'loading' | 'not-found' | 'ready', planState = 'COLLABORATING') {
