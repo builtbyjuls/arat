@@ -1,0 +1,244 @@
+<div class="requirement-fields" [formGroup]="form()">
+  <fieldset>
+    <legend>Plan basics</legend>
+    <div class="field">
+      <label for="plan-title">Plan title</label>
+      <input id="plan-title" type="text" formControlName="title" maxlength="120" aria-describedby="plan-title-hint plan-title-error">
+      <p id="plan-title-hint">Use 1 to 120 characters.</p>
+      @if (form().controls.title.touched && form().controls.title.invalid) {
+        <p id="plan-title-error" class="field-error">Enter a plan title of at most 120 characters.</p>
+      } @else if (serverViolation('title'); as violation) {
+        <p id="plan-title-error" class="field-error">{{ violation }}</p>
+      }
+    </div>
+    <div class="field">
+      <label for="plan-category">Activity category</label>
+      <select id="plan-category" formControlName="category" aria-describedby="plan-category-error">
+        <option value="COURT">Court</option>
+        <option value="KTV">KTV</option>
+        <option value="GROUP_DINING">Group dining</option>
+      </select>
+      @if (serverViolation('category'); as violation) {
+        <p id="plan-category-error" class="field-error">{{ violation }}</p>
+      }
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Schedule</legend>
+    <div class="field">
+      <label for="plan-time-zone">IANA time zone</label>
+      <input id="plan-time-zone" type="text" formControlName="timeZone" maxlength="64" aria-describedby="plan-time-zone-hint plan-time-zone-error">
+      <p id="plan-time-zone-hint">For example, Asia/Manila. Window times use this zone.</p>
+      @if (form().controls.timeZone.touched && form().controls.timeZone.invalid) {
+        <p id="plan-time-zone-error" class="field-error">Enter a valid named IANA time zone.</p>
+      } @else if (serverViolationFor('timeZone', 'validTimeZone'); as violation) {
+        <p id="plan-time-zone-error" class="field-error">{{ violation }}</p>
+      }
+    </div>
+    <div formArrayName="candidateWindows" class="repeated-fields">
+      @for (window of form().controls.candidateWindows.controls; track window; let index = $index) {
+        <fieldset [formGroupName]="index" class="repeated-card">
+          <legend>Candidate window {{ index + 1 }}</legend>
+          <div class="field">
+            <label [for]="'window-start-' + index">Starts</label>
+            <input [id]="'window-start-' + index" type="datetime-local" formControlName="startAt" [attr.aria-describedby]="'window-start-error-' + index + ' window-error-' + index">
+            @if (serverViolation('candidateWindows[' + index + '].startAt'); as violation) {
+              <p [id]="'window-start-error-' + index" class="field-error">{{ violation }}</p>
+            }
+          </div>
+          <div class="field">
+            <label [for]="'window-end-' + index">Ends</label>
+            <input [id]="'window-end-' + index" type="datetime-local" formControlName="endAt" [attr.aria-describedby]="'window-end-error-' + index + ' window-error-' + index">
+            @if (serverViolation('candidateWindows[' + index + '].endAt'); as violation) {
+              <p [id]="'window-end-error-' + index" class="field-error">{{ violation }}</p>
+            }
+          </div>
+          @if (window.touched && window.invalid) {
+            <p [id]="'window-error-' + index" class="field-error">Enter a start before the end.</p>
+          } @else if (serverViolationFor('candidateWindows[' + index + '].validInterval', 'candidateWindows[' + index + '].valid'); as violation) {
+            <p [id]="'window-error-' + index" class="field-error">{{ violation }}</p>
+          }
+          @if (form().controls.candidateWindows.length > 1) {
+            <button type="button" class="secondary" (click)="removeWindow(index)">Remove window</button>
+          }
+        </fieldset>
+      }
+      @if (form().controls.candidateWindows.hasError('invalidLocalDateTime')) {
+        <p class="field-error">One of these local times does not exist in the selected time zone.</p>
+      }
+      @if (serverViolationFor('candidateWindows', 'validCandidateWindows'); as violation) {
+        <p class="field-error">{{ violation }}</p>
+      }
+      <button type="button" class="secondary" (click)="addWindow()" [disabled]="form().controls.candidateWindows.length >= 10">Add candidate window</button>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Area and group size</legend>
+    <div formGroupName="area" class="two-column">
+      <div class="field">
+        <label for="plan-area-code">Area code</label>
+        <input id="plan-area-code" type="text" formControlName="code" maxlength="64" aria-describedby="plan-area-code-hint plan-area-code-error">
+        <p id="plan-area-code-hint">Use the exact service-area code, such as BGC.</p>
+        @if (form().controls.area.controls.code.touched && form().controls.area.controls.code.invalid) {
+          <p id="plan-area-code-error" class="field-error">Enter an area code of at most 64 characters.</p>
+        } @else if (serverViolation('area.code'); as violation) {
+          <p id="plan-area-code-error" class="field-error">{{ violation }}</p>
+        }
+      </div>
+      <div class="field">
+        <label for="plan-radius">Radius in km</label>
+        <input id="plan-radius" type="number" formControlName="radiusKm" min="1" max="100" step="1" inputmode="numeric" aria-describedby="plan-radius-error">
+        @if (form().controls.area.controls.radiusKm.touched && form().controls.area.controls.radiusKm.invalid) {
+          <p id="plan-radius-error" class="field-error">Enter a whole number from 1 to 100.</p>
+        } @else if (serverViolation('area.radiusKm'); as violation) {
+          <p id="plan-radius-error" class="field-error">{{ violation }}</p>
+        }
+      </div>
+    </div>
+    <div formGroupName="headcount" class="two-column">
+      <div class="field">
+        <label for="plan-headcount-minimum">Minimum headcount</label>
+        <input id="plan-headcount-minimum" type="number" formControlName="minimum" min="1" max="100" step="1" inputmode="numeric" aria-describedby="plan-headcount-minimum-error plan-headcount-range-error">
+        @if (form().controls.headcount.controls.minimum.touched && form().controls.headcount.controls.minimum.invalid) {
+          <p id="plan-headcount-minimum-error" class="field-error">Enter a whole number from 1 to 100.</p>
+        } @else if (serverViolation('headcount.minimum'); as violation) {
+          <p id="plan-headcount-minimum-error" class="field-error">{{ violation }}</p>
+        }
+      </div>
+      <div class="field">
+        <label for="plan-headcount-maximum">Maximum headcount</label>
+        <input id="plan-headcount-maximum" type="number" formControlName="maximum" min="1" max="100" step="1" inputmode="numeric" aria-describedby="plan-headcount-maximum-error plan-headcount-range-error">
+        @if (form().controls.headcount.controls.maximum.touched && form().controls.headcount.controls.maximum.invalid) {
+          <p id="plan-headcount-maximum-error" class="field-error">Enter a whole number from 1 to 100.</p>
+        } @else if (serverViolation('headcount.maximum'); as violation) {
+          <p id="plan-headcount-maximum-error" class="field-error">{{ violation }}</p>
+        }
+      </div>
+      @if (form().controls.headcount.touched && form().controls.headcount.invalid) {
+        <p id="plan-headcount-range-error" class="field-error column-span">Use 1 to 100, with the minimum no greater than the maximum.</p>
+      } @else if (serverViolationFor('headcount.validRange', 'headcount.valid'); as violation) {
+        <p id="plan-headcount-range-error" class="field-error column-span">{{ violation }}</p>
+      }
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Budget</legend>
+    <label class="checkbox-row" for="plan-budget-enabled">
+      <input id="plan-budget-enabled" type="checkbox" formControlName="budgetEnabled">
+      Add an exact PHP budget range
+    </label>
+    @if (form().controls.budgetEnabled.value) {
+      <div formGroupName="budget" class="two-column">
+        <div class="field">
+          <label for="plan-budget-minimum">Minimum PHP amount</label>
+          <input id="plan-budget-minimum" type="text" formControlName="minimumAmount" inputmode="decimal" placeholder="0.00" aria-describedby="plan-budget-minimum-error plan-budget-range-error">
+          @if (serverViolation('budget.minimumAmount'); as violation) {
+            <p id="plan-budget-minimum-error" class="field-error">{{ violation }}</p>
+          }
+        </div>
+        <div class="field">
+          <label for="plan-budget-maximum">Maximum PHP amount</label>
+          <input id="plan-budget-maximum" type="text" formControlName="maximumAmount" inputmode="decimal" placeholder="2500.00" aria-describedby="plan-budget-maximum-error plan-budget-range-error">
+          @if (serverViolation('budget.maximumAmount'); as violation) {
+            <p id="plan-budget-maximum-error" class="field-error">{{ violation }}</p>
+          }
+        </div>
+        @if (form().controls.budget.touched && (form().hasError('invalidBudget') || form().hasError('invalidBudgetRange'))) {
+          <p id="plan-budget-range-error" class="field-error column-span">Use exact amounts from 0.00 to 1000000.00, with the minimum no greater than the maximum.</p>
+        } @else if (serverViolationFor('budget.validRange', 'budget.valid', 'budget.currency'); as violation) {
+          <p id="plan-budget-range-error" class="field-error column-span">{{ violation }}</p>
+        }
+      </div>
+    }
+  </fieldset>
+
+  <fieldset>
+    <legend>Provider-publishable requirements</legend>
+    <p class="publishable-warning">Providers can see must-haves, notes, and text attributes if this plan is later published. Do not include private member details.</p>
+    <div formArrayName="mustHaves" class="repeated-fields">
+      @for (mustHave of form().controls.mustHaves.controls; track mustHave; let index = $index) {
+        <div class="inline-row">
+          <div class="field">
+            <label [for]="'must-have-' + index">Must-have {{ index + 1 }}</label>
+            <input [id]="'must-have-' + index" type="text" [formControlName]="index" maxlength="120" [attr.aria-describedby]="'must-have-error-' + index">
+            @if (mustHave.touched && mustHave.invalid) {
+              <p [id]="'must-have-error-' + index" class="field-error">Enter 1 to 120 characters.</p>
+            } @else if (serverViolation('mustHaves[' + index + ']'); as violation) {
+              <p [id]="'must-have-error-' + index" class="field-error">{{ violation }}</p>
+            }
+          </div>
+          <button type="button" class="secondary remove-button" (click)="removeMustHave(index)">Remove</button>
+        </div>
+      }
+      @if (form().controls.mustHaves.hasError('duplicate')) {
+        <p class="field-error">Must-haves must be unique.</p>
+      }
+      @if (serverViolationFor('mustHaves', 'uniqueMustHaves'); as violation) {
+        <p class="field-error">{{ violation }}</p>
+      }
+      <button type="button" class="secondary" (click)="addMustHave()" [disabled]="form().controls.mustHaves.length >= 20">Add must-have</button>
+    </div>
+    <div class="field">
+      <label for="plan-provider-notes">Provider-safe notes (optional)</label>
+      <textarea id="plan-provider-notes" formControlName="providerSafeNotes" maxlength="1000" aria-describedby="plan-provider-notes-hint plan-provider-notes-error"></textarea>
+      <p id="plan-provider-notes-hint">Use up to 1000 characters.</p>
+      @if (form().controls.providerSafeNotes.touched && form().controls.providerSafeNotes.invalid) {
+        <p id="plan-provider-notes-error" class="field-error">Use no more than 1000 characters.</p>
+      } @else if (serverViolation('providerSafeNotes'); as violation) {
+        <p id="plan-provider-notes-error" class="field-error">{{ violation }}</p>
+      }
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Category attributes</legend>
+    <p>Add up to 20 bounded Boolean, whole-number, or text attributes.</p>
+    <div formArrayName="categoryAttributes" class="repeated-fields">
+      @for (attribute of form().controls.categoryAttributes.controls; track attribute; let index = $index) {
+        <fieldset [formGroupName]="index" class="repeated-card attribute-card">
+          <legend>Attribute {{ index + 1 }}</legend>
+          <div class="field">
+            <label [for]="'attribute-key-' + index">Key</label>
+            <input [id]="'attribute-key-' + index" type="text" formControlName="key" maxlength="40" placeholder="hasParking" [attr.aria-describedby]="'attribute-error-' + index">
+          </div>
+          <div class="field">
+            <label [for]="'attribute-type-' + index">Type</label>
+            <select [id]="'attribute-type-' + index" formControlName="type">
+              <option value="string">Text</option>
+              <option value="integer">Whole number</option>
+              <option value="boolean">Boolean</option>
+            </select>
+          </div>
+          <div class="field">
+            <label [for]="'attribute-value-' + index">Value</label>
+            @if (attribute.controls.type.value === 'boolean') {
+              <select [id]="'attribute-value-' + index" formControlName="value" [attr.aria-describedby]="'attribute-error-' + index">
+                <option value="">Choose a value</option>
+                <option value="true">True</option>
+                <option value="false">False</option>
+              </select>
+            } @else {
+              <input [id]="'attribute-value-' + index" type="text" formControlName="value" [attr.inputmode]="attribute.controls.type.value === 'integer' ? 'numeric' : null" maxlength="120" [attr.aria-describedby]="'attribute-error-' + index">
+            }
+          </div>
+          @if (attribute.touched && attribute.invalid) {
+            <p [id]="'attribute-error-' + index" class="field-error">Use a lower-camel-case key and a valid bounded value for the selected type.</p>
+          } @else if (serverViolationFor('categoryAttributes.' + attribute.controls.key.value, 'categoryAttributes[' + attribute.controls.key.value + ']'); as violation) {
+            <p [id]="'attribute-error-' + index" class="field-error">{{ violation }}</p>
+          }
+          <button type="button" class="secondary" (click)="removeAttribute(index)">Remove attribute</button>
+        </fieldset>
+      }
+      @if (form().controls.categoryAttributes.hasError('duplicate')) {
+        <p class="field-error">Attribute keys must be unique.</p>
+      }
+      @if (serverViolationFor('categoryAttributes', 'validCategoryAttributes'); as violation) {
+        <p class="field-error">{{ violation }}</p>
+      }
+      <button type="button" class="secondary" (click)="addAttribute()" [disabled]="form().controls.categoryAttributes.length >= 20">Add category attribute</button>
+    </div>
+  </fieldset>
+</div>

@@ -9,3 +9,49 @@ button { min-height: 44px; padding: var(--space-2) var(--space-4); }
 .plan-title { font-size: 1.125rem; font-weight: 700; }
 .state-label { color: var(--color-primary); font-weight: 600; }
 .state, .status, .load-more { margin-top: var(--space-6); }
+
+.create-plan,
+.command-state {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  box-shadow: var(--elevation-1);
+  margin-top: var(--space-6);
+  overflow-wrap: anywhere;
+  padding: var(--space-4);
+}
+
+.create-plan form,
+.command-state,
+.command-actions {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.primary-action {
+  justify-self: stretch;
+  margin-top: var(--space-2);
+}
+
+.command-state {
+  border-color: var(--color-danger);
+}
+
+.validation-summary {
+  margin: 0;
+  padding-left: var(--space-5);
+}
+
+.violation-field {
+  font-weight: 700;
+}
+
+@media (min-width: 32rem) {
+  .primary-action {
+    justify-self: start;
+  }
+
+  .command-actions {
+    grid-template-columns: repeat(2, max-content);
+  }
+}

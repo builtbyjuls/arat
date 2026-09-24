@@ -2,7 +2,7 @@ import { HttpParams } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
 import { describe, expect, it, vi } from 'vitest';
 import { of } from 'rxjs';
-import { ApiHttpClient } from '../api/api-http-client';
+import { ApiHttpClient, IdempotentMutationIntent } from '../api/api-http-client';
 import { PlanApi } from './plan-api.service';
 
 describe('PlanApi', () => {
@@ -16,5 +16,22 @@ describe('PlanApi', () => {
     const params = read.mock.calls[0][1] as HttpParams;
     expect(params.get('cursor')).toBe('opaque-cursor');
     expect(params.get('limit')).toBe('20');
+  });
+
+  it('creates a complete group-scoped idempotent intent', () => {
+    const intent = { idempotencyKey: 'key-1' } as IdempotentMutationIntent<unknown>;
+    const beginIdempotentMutation = vi.fn(() => intent);
+    TestBed.configureTestingModule({ providers: [{ provide: ApiHttpClient, useValue: { beginIdempotentMutation } }] });
+    const request = {
+      title: 'Friday badminton', category: 'COURT' as const, timeZone: 'Asia/Manila',
+      candidateWindows: [{ startAt: '2027-01-09T09:00:00+08:00', endAt: '2027-01-09T11:00:00+08:00' }],
+      area: { code: 'BGC', radiusKm: 5 }, headcount: { minimum: 4, maximum: 10 },
+      mustHaves: [], categoryAttributes: {},
+    };
+
+    expect(TestBed.inject(PlanApi).createIntent('group id', request)).toBe(intent);
+    expect(beginIdempotentMutation).toHaveBeenCalledWith({
+      method: 'POST', path: '/groups/group%20id/plans', body: request,
+    });
   });
 });

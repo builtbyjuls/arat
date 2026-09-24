@@ -58,6 +58,19 @@ describe('PlanIndexService', () => {
     expect(service.state()).toBe('not-found');
   });
 
+  it('discards a populated group index after a private command failure', async () => {
+    const service = setup(planApi([page([
+      { planId: 'plan-1', title: 'Visible before command failure', state: 'COLLABORATING' },
+    ], 'next')]));
+    await service.refresh('group-1');
+
+    service.discardInaccessibleGroup('group-1');
+
+    expect(service.plans()).toEqual([]);
+    expect(service.nextCursor()).toBeNull();
+    expect(service.state()).toBe('not-found');
+  });
+
   it('shows a safe error for a malformed cursor response', async () => {
     const service = setup({ list: vi.fn(() => throwError(() => problem(400, 'INVALID_CURSOR'))) });
     await service.refresh('group-1');

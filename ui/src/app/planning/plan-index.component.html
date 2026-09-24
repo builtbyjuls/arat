@@ -13,6 +13,47 @@
       <div><h1 id="plans-heading" data-route-heading tabindex="-1">Plans</h1><p>Private plans for this group.</p></div>
       <button type="button" (click)="refresh()" [disabled]="planIndex.state() === 'loading-more' || planIndex.state() === 'refreshing'">Refresh</button>
     </div>
+    <section class="create-plan" aria-labelledby="create-plan-heading">
+      <h2 id="create-plan-heading">Create a collaborative plan</h2>
+      <p>Start with the complete private requirement draft. You can refine it before publishing later.</p>
+      <form [formGroup]="createForm" (ngSubmit)="submitCreate()">
+        <app-plan-requirement-fields [form]="createForm" [serverViolations]="planCreation.violations()" />
+        <button type="submit" class="primary-action" [disabled]="planCreation.state() !== 'idle'">
+          {{ planCreation.state() === 'submitting' ? 'Creating plan...' : 'Create plan' }}
+        </button>
+      </form>
+      @if (planCreation.state() === 'network-error') {
+        <section class="command-state" aria-live="assertive" role="alert">
+          <p>Plan creation could not reach the server. Retry to send the exact same request.</p>
+          @if (planCreation.correlationId()) { <p>Correlation ID: {{ planCreation.correlationId() }}</p> }
+          <div class="command-actions">
+            <button type="button" (click)="retryCreate()">Retry creation</button>
+            <button type="button" (click)="dismissCreateError()">Start over</button>
+          </div>
+        </section>
+      } @else if (planCreation.state() === 'error') {
+        <section class="command-state" aria-live="assertive" role="alert">
+          @if (planCreation.problemCode() === 'PRIVATE_RESOURCE_NOT_FOUND') {
+            <p>This group is unavailable.</p>
+          } @else if (planCreation.problemCode() === 'IDEMPOTENCY_KEY_REUSED') {
+            <p>This creation request conflicts with a previously used idempotency key. Start over with a new request.</p>
+          } @else if (planCreation.problemCode() === 'VALIDATION_FAILED') {
+            <p>Plan creation needs the highlighted corrections.</p>
+            @if (planCreation.violations().length > 0) {
+              <ul class="validation-summary" aria-label="Plan validation errors">
+                @for (violation of planCreation.violations(); track violation.field + violation.message) {
+                  <li><span class="violation-field">{{ violation.field }}:</span> {{ violation.message }}</li>
+                }
+              </ul>
+            }
+          } @else {
+            <p>Plan creation could not be completed. Check the form and try again.</p>
+          }
+          @if (planCreation.correlationId()) { <p>Correlation ID: {{ planCreation.correlationId() }}</p> }
+          <button type="button" (click)="dismissCreateError()">Dismiss</button>
+        </section>
+      }
+    </section>
     @if (planIndex.state() === 'error' && planIndex.plans().length === 0) {
       <section class="state" aria-live="assertive" role="alert"><h2>Plans are unavailable</h2><p>Try refreshing. If the problem continues, use the correlation ID when contacting support.</p>@if (planIndex.correlationId()) { <p>Correlation ID: {{ planIndex.correlationId() }}</p> }</section>
     } @else if (planIndex.state() === 'empty') {

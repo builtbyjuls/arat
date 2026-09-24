@@ -55,6 +55,19 @@ export class PlanIndexService {
     finally { this.finishRequest(requestId, groupId); }
   }
 
+  discardInaccessibleGroup(groupId: string): void {
+    if (this.#groupId !== groupId) {
+      return;
+    }
+    this.#requestId += 1;
+    this.#pending = false;
+    this.#plans.set([]);
+    this.#nextCursor.set(null);
+    this.#loadedPageCount = 0;
+    this.#correlationId.set(null);
+    this.#state.set('not-found');
+  }
+
   private async loadInitialPages(pageCount: number): Promise<void> {
     const groupId = this.#groupId;
     if (groupId === null) { return; }
