@@ -99,4 +99,27 @@ describe('PlanApi', () => {
     });
     expect(executeIdempotent).toHaveBeenCalledWith(intent);
   });
+
+  it('creates one versioned publication intent and executes it', () => {
+    const intent = { idempotencyKey: 'key-1' } as IdempotentMutationIntent<unknown>;
+    const beginIdempotentMutation = vi.fn(() => intent);
+    const executeIdempotent = vi.fn(() => of({ body: null }));
+    TestBed.configureTestingModule({
+      providers: [{ provide: ApiHttpClient, useValue: { beginIdempotentMutation, executeIdempotent } }],
+    });
+    const api = TestBed.inject(PlanApi);
+    const request = { finalizationId: 'finalization-1' };
+
+    const createdIntent = api.createPublicationIntent('plan id', request, '"7"');
+    api.publishRequest(createdIntent).subscribe();
+
+    expect(createdIntent).toBe(intent);
+    expect(beginIdempotentMutation).toHaveBeenCalledWith({
+      method: 'POST',
+      path: '/plans/plan%20id/published-requests',
+      body: request,
+      precondition: { header: 'If-Match', value: '"7"' },
+    });
+    expect(executeIdempotent).toHaveBeenCalledWith(intent);
+  });
 });

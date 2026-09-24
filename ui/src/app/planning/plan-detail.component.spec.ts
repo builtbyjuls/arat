@@ -8,6 +8,7 @@ import { PlanDetailService } from './plan-detail.service';
 import { PlanRequirementEditService } from './plan-requirement-edit.service';
 import { PlanPreferenceService } from './plan-preference.service';
 import { PlanFinalizationService } from './plan-finalization.service';
+import { PlanPublicationService } from './plan-publication.service';
 import { ActorScopeResetService } from '../identity/actor-scope-reset.service';
 
 describe('PlanDetailComponent', () => {
@@ -435,6 +436,180 @@ describe('PlanDetailComponent', () => {
     expect((fixture.nativeElement as HTMLElement).textContent).toContain(message);
     expect((fixture.nativeElement as HTMLElement).textContent).not.toContain('Do not render');
   });
+
+  it('requires an explicit review naming the current finalization before publication', async () => {
+    const finalizations = fakeFinalizations();
+    const current = finalization('finalization-1', true);
+    finalizations.items.set([current]);
+    finalizations.selected.set(current);
+    finalizations.recoverable.set(current);
+    const publications = fakePublications();
+    publications.publish.mockResolvedValue(publicationResult('initial'));
+    const fixture = await createComponent(
+      fakeDetail('ready'), fakeEdit(), fakePreferences(), true, finalizations, publications,
+    );
+    const root = fixture.nativeElement as HTMLElement;
+
+    expect(root.textContent).toContain('Review publication of finalization finalization-1');
+    root.querySelector<HTMLButtonElement>('.review-publication')?.click();
+    fixture.detectChanges();
+
+    expect(root.textContent).toContain('Review finalization finalization-1 before publication');
+    expect(root.textContent).toContain('This will publish an immutable request');
+    Array.from(root.querySelectorAll('button'))
+      .find((button) => button.textContent?.includes('Confirm and publish request'))?.click();
+    await fixture.whenStable();
+
+    expect(publications.publish).toHaveBeenCalledWith(
+      'plan-1', 'finalization-1', '"7"', 'COLLABORATING',
+    );
+  });
+
+  it('renders a replacement result and response metadata without recipient identity data', async () => {
+    const publications = fakePublications();
+    publications.state.set('succeeded');
+    const responseWithForbiddenFields = publicationResult('replacement');
+    const unsafeResponse = responseWithForbiddenFields.request as Record<string, unknown>;
+    unsafeResponse['providerIds'] = ['provider-secret'];
+    unsafeResponse['providerName'] = 'Secret Provider Name';
+    publications.result.set(responseWithForbiddenFields);
+    const fixture = await createComponent(
+      fakeDetail('ready', 'OPEN_FOR_OFFERS'), fakeEdit(), fakePreferences(), true,
+      fakeFinalizations(), publications,
+    );
+    const publication = (fixture.nativeElement as HTMLElement).querySelector('.publication');
+
+    expect(publication?.textContent).toContain('Replacement provider request published');
+    expect(publication?.textContent).toContain('previously open request was superseded atomically');
+    expect(publication?.textContent).toContain('Request version2');
+    expect(publication?.textContent).toContain('Original command lifecycle stateOpen');
+    expect(publication?.textContent).toContain('Original response Location/api/v1/plans/plan-1/published-requests/request-2');
+    expect(publication?.textContent).toContain('Recipient identities are not included');
+    expect(publication?.textContent).not.toContain('provider-secret');
+    expect(publication?.textContent).not.toContain('Secret Provider Name');
+  });
+
+  it('labels an exact replay OPEN result as historical beside a terminal current plan', async () => {
+    const publications = fakePublications();
+    const replay = publicationResult('initial');
+    replay.exactRetry = true;
+    publications.state.set('succeeded');
+    publications.result.set(replay);
+    const fixture = await createComponent(
+      fakeDetail('ready', 'CANCELLED'), fakeEdit(), fakePreferences(), true,
+      fakeFinalizations(), publications,
+    );
+    const text = (fixture.nativeElement as HTMLElement).textContent;
+
+    expect(text).toContain('Collaboration state: Cancelled');
+    expect(text).toContain('Original command lifecycle stateOpen');
+    expect(text).toContain('Original command actionableYes');
+    expect(text).toContain('does not establish the request\'s current lifecycle or actionability');
+    expect(text).toContain('retrying the exact same publication intent');
+  });
+
+  it('prevents finalization and publication commands from overlapping', async () => {
+    const publications = fakePublications();
+    publications.state.set('submitting');
+    const finalizations = fakeFinalizations();
+    const current = finalization('finalization-1', true);
+    finalizations.recoverable.set(current);
+    const fixture = await createComponent(
+      fakeDetail('ready'), fakeEdit(), fakePreferences(), true, finalizations, publications,
+    );
+    fixture.componentInstance.finalizationForm.setValue({
+      candidateWindowId: 'window-1', offerDeadline: '2027-01-08T10:00',
+    });
+
+    fixture.componentInstance.submitFinalization();
+    fixture.componentInstance.reviewPublication();
+
+    expect(finalizations.finalize).not.toHaveBeenCalled();
+    expect(fixture.componentInstance.publicationReview()).toBeNull();
+    expect(publications.dismiss).not.toHaveBeenCalled();
+
+    publications.state.set('idle');
+    finalizations.saveState.set('submitting');
+    fixture.componentInstance.reviewPublication();
+
+    expect(fixture.componentInstance.publicationReview()).toBeNull();
+  });
+
+  it('keeps an ambiguous publication retry key until stop-and-refresh is chosen', async () => {
+    const finalizations = fakeFinalizations();
+    const current = finalization('finalization-1', true);
+    finalizations.recoverable.set(current);
+    const publications = fakePublications();
+    const fixture = await createComponent(
+      fakeDetail('ready'), fakeEdit(), fakePreferences(), true, finalizations, publications,
+    );
+    fixture.componentInstance.reviewPublication();
+    publications.dismiss.mockClear();
+    publications.state.set('network-error');
+    fixture.detectChanges();
+
+    const cancel = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('button'))
+      .find((button) => button.textContent?.includes('Cancel publication'));
+    expect(cancel?.disabled).toBe(true);
+
+    fixture.componentInstance.cancelPublicationReview();
+
+    expect(fixture.componentInstance.publicationReview()?.finalizationId).toBe('finalization-1');
+    expect(publications.dismiss).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['NO_ELIGIBLE_PROVIDERS', 'No eligible providers matched'],
+    ['RECIPIENT_LIMIT_EXCEEDED', 'exceeds the server recipient cap'],
+    ['REQUEST_DEADLINE_EXPIRED', 'offer deadline has elapsed'],
+    ['INVALID_PLAN_STATE', 'plan state no longer allows publication'],
+  ])('renders distinct publication failure %s', async (problemCode, message) => {
+    const publications = fakePublications();
+    publications.state.set('error');
+    publications.problemCode.set(problemCode);
+    const fixture = await createComponent(
+      fakeDetail('ready'), fakeEdit(), fakePreferences(), true,
+      fakeFinalizations(), publications,
+    );
+
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain(message);
+    expect((fixture.nativeElement as HTMLElement).textContent).not.toContain('Do not render');
+  });
+
+  it('refreshes plan and finalization state after a stale publication conflict', async () => {
+    const publications = fakePublications();
+    publications.state.set('conflict');
+    publications.problemCode.set('FINALIZATION_VERSION_CHANGED');
+    const detail = fakeDetail('ready');
+    const finalizations = fakeFinalizations();
+    const fixture = await createComponent(
+      detail, fakeEdit(), fakePreferences(), true, finalizations, publications,
+    );
+
+    Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('button'))
+      .find((button) => button.textContent?.includes('Refresh publication state'))?.click();
+    await fixture.whenStable();
+
+    expect(detail.load).toHaveBeenCalledTimes(2);
+    expect(finalizations.load).toHaveBeenCalledTimes(2);
+    expect(publications.dismiss).toHaveBeenCalledOnce();
+  });
+
+  it('clears an open publication review when the actor changes', async () => {
+    const finalizations = fakeFinalizations();
+    const current = finalization('finalization-1', true);
+    finalizations.recoverable.set(current);
+    const fixture = await createComponent(
+      fakeDetail('ready'), fakeEdit(), fakePreferences(), true, finalizations,
+    );
+    (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('.review-publication')?.click();
+
+    expect(fixture.componentInstance.publicationReview()?.finalizationId).toBe('finalization-1');
+    TestBed.inject(ActorScopeResetService).reset();
+
+    expect(fixture.componentInstance.publicationReview()).toBeNull();
+  });
 });
 
 async function createComponent(
@@ -443,6 +618,7 @@ async function createComponent(
   preferences = fakePreferences(),
   awaitStable = true,
   finalizations = fakeFinalizations(),
+  publications = fakePublications(),
 ) {
   await TestBed.configureTestingModule({
     imports: [PlanDetailComponent],
@@ -453,6 +629,7 @@ async function createComponent(
       { provide: PlanRequirementEditService, useValue: edit },
       { provide: PlanPreferenceService, useValue: preferences },
       { provide: PlanFinalizationService, useValue: finalizations },
+      { provide: PlanPublicationService, useValue: publications },
     ],
   }).compileComponents();
   const fixture = TestBed.createComponent(PlanDetailComponent);
@@ -462,6 +639,27 @@ async function createComponent(
   }
   fixture.detectChanges();
   return fixture;
+}
+
+function fakePublications() {
+  const state = signal<'conflict' | 'error' | 'idle' | 'network-error' | 'submitting' | 'succeeded'>('idle');
+  const problemCode = signal<string | null>(null);
+  const result = signal<ReturnType<typeof publicationResult> | null>(null);
+  return {
+    state,
+    problemCode,
+    correlationId: signal<string | null>(null),
+    result,
+    usePlan: vi.fn(),
+    releasePlan: vi.fn(),
+    publish: vi.fn(async (): Promise<ReturnType<typeof publicationResult> | null> => null),
+    retry: vi.fn(async (): Promise<ReturnType<typeof publicationResult> | null> => null),
+    dismiss: vi.fn(() => {
+      state.set('idle');
+      problemCode.set(null);
+      result.set(null);
+    }),
+  };
 }
 
 function fakeFinalizations() {
@@ -559,5 +757,33 @@ function finalization(finalizationId: string, currentBasis: boolean) {
     offerDeadline: '2027-01-08T02:00:00Z', timeZone: 'Asia/Manila', category: 'COURT',
     area: { code: 'BGC', radiusKm: 5 }, headcount: { minimum: 4, maximum: 10 },
     currentPreferenceCount: 2, stalePreferenceCount: 1, warnings: ['STALE_PREFERENCE_INPUT_PRESENT'],
+  };
+}
+
+function publicationResult(outcome: 'initial' | 'replacement' | 'versioned') {
+  const requestVersion = outcome === 'initial' ? 1 : 2;
+  return {
+    etag: '"8"',
+    exactRetry: false,
+    location: `/api/v1/plans/plan-1/published-requests/request-${requestVersion}`,
+    outcome,
+    request: {
+      requestId: `request-${requestVersion}`,
+      requestVersion,
+      publishedAt: '2027-01-08T01:00:00Z',
+      state: 'OPEN',
+      actionable: true,
+      category: 'COURT',
+      timeZone: 'Asia/Manila',
+      area: { code: 'BGC', radiusKm: 5 },
+      requestedWindow: {
+        startAt: '2027-01-09T01:00:00Z',
+        endAt: '2027-01-09T03:00:00Z',
+      },
+      headcount: { minimum: 4, maximum: 10 },
+      mustHaves: ['parking'],
+      categoryAttributes: { hasParking: true },
+      offerDeadline: '2027-01-08T02:00:00Z',
+    },
   };
 }

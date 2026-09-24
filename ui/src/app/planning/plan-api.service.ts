@@ -23,6 +23,8 @@ export type PreferenceCollection = components['schemas']['PreferenceCollectionRe
 export type FinalizeRequirementsRequest = components['schemas']['FinalizeRequirementsRequest'];
 export type RequirementFinalization = components['schemas']['RequirementFinalization'];
 export type RequirementFinalizationPage = components['schemas']['RequirementFinalizationPageRepresentation'];
+export type PublishRequest = components['schemas']['PublishRequest'];
+export type PublishedRequest = components['schemas']['PublishedRequestRepresentation'];
 
 const PLAN_PAGE_LIMIT = 20;
 
@@ -107,6 +109,25 @@ export class PlanApi {
     intent: IdempotentMutationIntent<FinalizeRequirementsRequest>,
   ): Observable<ApiHttpResult<RequirementFinalization>> {
     return this.#api.executeIdempotent<RequirementFinalization, FinalizeRequirementsRequest>(intent);
+  }
+
+  createPublicationIntent(
+    planId: string,
+    request: PublishRequest,
+    etag: string,
+  ): IdempotentMutationIntent<PublishRequest> {
+    return this.#api.beginIdempotentMutation({
+      method: 'POST',
+      path: `/plans/${encodeURIComponent(planId)}/published-requests`,
+      body: request,
+      precondition: ifMatch(etag),
+    });
+  }
+
+  publishRequest(
+    intent: IdempotentMutationIntent<PublishRequest>,
+  ): Observable<ApiHttpResult<PublishedRequest>> {
+    return this.#api.executeIdempotent<PublishedRequest, PublishRequest>(intent);
   }
 
   createIntent(

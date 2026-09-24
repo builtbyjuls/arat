@@ -30,7 +30,7 @@
         <p>Plan version: {{ plan.version ?? 'Unavailable' }}</p>
         <p class="stale-indicator" role="status">Showing the last server response. Refresh before taking a later action.</p>
       </div>
-      <button type="button" (click)="refresh()" [disabled]="requirementEdit.state() === 'conflict' || requirementEdit.state() === 'network-error' || requirementEdit.state() === 'reapply-ready' || requirementEdit.state() === 'submitting' || preferences.saveState() === 'submitting' || finalizations.saveState() === 'submitting' || finalizations.saveState() === 'network-error'">Refresh plan</button>
+      <button type="button" (click)="refresh()" [disabled]="requirementEdit.state() === 'conflict' || requirementEdit.state() === 'network-error' || requirementEdit.state() === 'reapply-ready' || requirementEdit.state() === 'submitting' || preferences.saveState() === 'submitting' || finalizations.saveState() === 'submitting' || finalizations.saveState() === 'network-error' || publications.state() === 'submitting' || publications.state() === 'network-error'">Refresh plan</button>
     </div>
 
     <section class="detail-card" aria-labelledby="requirements-heading">
@@ -311,7 +311,7 @@
             </div>
           }
 
-          <button type="submit" class="primary-action" [disabled]="finalizations.saveState() !== 'idle' || (plan.requirements?.candidateWindows?.length ?? 0) === 0">
+          <button type="submit" class="primary-action" [disabled]="finalizations.saveState() !== 'idle' || (plan.requirements?.candidateWindows?.length ?? 0) === 0 || publicationReview() !== null || (publications.state() !== 'idle' && publications.state() !== 'succeeded')">
             {{ finalizations.saveState() === 'submitting' ? 'Finalizing requirements...' : 'Finalize requirements' }}
           </button>
         </form>
@@ -393,6 +393,112 @@
       } @else {
         <p>No finalization exists for the current plan basis. Create one deliberately before publication.</p>
       }
+
+      <section class="publication" aria-labelledby="publication-heading">
+        <h3 id="publication-heading">Publish provider request</h3>
+        <p>Publication creates an immutable provider-visible request and a fixed eligible audience. Recipient identities are not included in this group view.</p>
+        <p>Success records notification intent only. It does not mean a queue message or email was delivered.</p>
+
+        @if (publications.result(); as publication) {
+          <section class="publication-result" aria-live="polite" role="status">
+            <h4>{{ publicationOutcomeLabel(publication.outcome) }}</h4>
+            <p>This is the original immutable publication command result. It does not establish the request's current lifecycle or actionability after later changes.</p>
+            @if (publication.outcome === 'replacement') {
+              <p>The previously open request was superseded atomically when this server result was created.</p>
+            }
+            @if (publication.exactRetry) {
+              <p>This is the result of retrying the exact same publication intent with its original idempotency key, body, and plan ETag.</p>
+            }
+            <dl>
+              <div><dt>Request version</dt><dd>{{ publication.request.requestVersion ?? 'Unavailable' }}</dd></div>
+              <div><dt>Original command lifecycle state</dt><dd>{{ publicationStateLabel(publication.request.state) }}</dd></div>
+              <div><dt>Original command actionable</dt><dd>{{ publication.request.actionable === true ? 'Yes' : 'No' }}</dd></div>
+              <div><dt>Original publication time</dt><dd>{{ formatWindow(publication.request.publishedAt, publication.request.timeZone) }}</dd></div>
+              <div><dt>Chosen schedule</dt><dd>{{ formatWindow(publication.request.requestedWindow?.startAt, publication.request.timeZone) }} to {{ formatWindow(publication.request.requestedWindow?.endAt, publication.request.timeZone) }}</dd></div>
+              <div><dt>Offer deadline</dt><dd>{{ formatWindow(publication.request.offerDeadline, publication.request.timeZone) }}</dd></div>
+              <div><dt>Original response Location</dt><dd><code>{{ publication.location }}</code></dd></div>
+              <div><dt>Original response plan ETag</dt><dd><code>{{ publication.etag }}</code></dd></div>
+            </dl>
+            <p>The server response contains no recipient identities or recipient set. Provider delivery is not claimed.</p>
+          </section>
+        }
+
+        @if (finalizations.recoverable(); as publishable) {
+          @if (publicationReview() === null) {
+            <button type="button" class="review-publication" (click)="reviewPublication()" [disabled]="publications.state() !== 'idle' || finalizations.saveState() !== 'idle'">
+              Review publication of finalization {{ publishable.finalizationId }}
+            </button>
+          }
+        } @else if (publications.result() === null) {
+          <p role="status">No current-basis finalization is available to publish.</p>
+        }
+
+        @if (publicationReview(); as reviewed) {
+          <section class="publication-review" aria-labelledby="publication-review-heading">
+            <h4 id="publication-review-heading">Review finalization {{ reviewed.finalizationId }} before publication</h4>
+            @if (plan.state === 'OPEN_FOR_OFFERS') {
+              <p>This is a replacement. Confirming will atomically supersede the current open request and publish the next immutable version.</p>
+            } @else {
+              <p>This will publish an immutable request from the chosen finalization.</p>
+            }
+            <dl>
+              <div><dt>Basis plan version</dt><dd>{{ reviewed.basisPlanVersion ?? 'Unavailable' }}</dd></div>
+              <div><dt>Chosen schedule</dt><dd>{{ formatWindow(reviewed.selectedStartAt, reviewed.timeZone) }} to {{ formatWindow(reviewed.selectedEndAt, reviewed.timeZone) }}</dd></div>
+              <div><dt>Offer deadline</dt><dd>{{ formatWindow(reviewed.offerDeadline, reviewed.timeZone) }}</dd></div>
+              <div><dt>Activity</dt><dd>{{ reviewed.category ?? 'Unavailable' }}</dd></div>
+              <div><dt>Area</dt><dd>{{ reviewed.area?.code ?? 'Unavailable' }} @if (reviewed.area) { ({{ reviewed.area.radiusKm }} km radius) }</dd></div>
+              <div><dt>Group size</dt><dd>{{ reviewed.headcount?.minimum ?? 'Unavailable' }} to {{ reviewed.headcount?.maximum ?? 'Unavailable' }}</dd></div>
+              @if (reviewed.budget; as budget) { <div><dt>Budget</dt><dd>{{ budget.currency }} {{ budget.minimumAmount }} to {{ budget.maximumAmount }}</dd></div> }
+            </dl>
+            <p>Provider-safe notes, must-haves, and string attributes may contain organizer-authored text. There is no automatic PII redaction.</p>
+            <div class="command-actions">
+              <button type="button" class="primary-action" (click)="confirmPublication()" [disabled]="publications.state() !== 'idle'">
+                {{ publications.state() === 'submitting' ? 'Publishing request...' : publicationActionLabel(plan.state) }}
+              </button>
+              <button type="button" (click)="cancelPublicationReview()" [disabled]="publications.state() !== 'idle'">Cancel publication</button>
+            </div>
+          </section>
+        }
+
+        @if (publications.state() === 'network-error') {
+          <section class="command-state" aria-live="assertive" role="alert">
+            <p>The publication response was not received. Retry the exact same command with the same idempotency key, finalization, and plan ETag.</p>
+            @if (publications.correlationId()) { <p>Correlation ID: {{ publications.correlationId() }}</p> }
+            <div class="command-actions">
+              <button type="button" (click)="retryPublication()">Retry exact publication</button>
+              <button type="button" (click)="refreshPublicationConflict()">Stop retrying and refresh</button>
+            </div>
+          </section>
+        } @else if (publications.state() === 'conflict') {
+          <section class="command-state" aria-live="assertive" role="alert">
+            @if (publications.problemCode() === 'FINALIZATION_VERSION_CHANGED') {
+              <p>The chosen finalization no longer matches the current plan version. No request was published.</p>
+            } @else {
+              <p>The plan changed after this publication review. No request was published from this attempt.</p>
+            }
+            <p>Refresh the plan and finalization history, then deliberately review a current candidate.</p>
+            @if (publications.correlationId()) { <p>Correlation ID: {{ publications.correlationId() }}</p> }
+            <button type="button" (click)="refreshPublicationConflict()">Refresh publication state</button>
+          </section>
+        } @else if (publications.state() === 'error') {
+          <section class="command-state" aria-live="assertive" role="alert">
+            @switch (publications.problemCode()) {
+              @case ('NO_ELIGIBLE_PROVIDERS') { <p>No eligible providers matched this finalized request. Nothing was published.</p> }
+              @case ('RECIPIENT_LIMIT_EXCEEDED') { <p>The eligible audience exceeds the server recipient cap. Nothing was published.</p> }
+              @case ('REQUEST_DEADLINE_EXPIRED') { <p>The finalized offer deadline has elapsed. Create and review a new finalization before publishing.</p> }
+              @case ('INVALID_PLAN_STATE') { <p>The plan state no longer allows publication. Refresh to see its current state.</p> }
+              @case ('IDEMPOTENCY_KEY_REUSED') { <p>The publication intent key was already used for different input. Refresh before starting a new intent.</p> }
+              @case ('FORBIDDEN_ROLE') { <p>Your current role cannot publish this provider request.</p> }
+              @case ('ACCESS_DENIED') { <p>Your current role cannot publish this provider request.</p> }
+              @case ('PRIVATE_RESOURCE_NOT_FOUND') { <p>This plan is unavailable.</p> }
+              @case ('INVALID_PUBLICATION_RESPONSE') { <p>The server returned an incomplete publication response. Refresh before taking another action.</p> }
+              @default { <p>The provider request could not be published. Refresh before trying again.</p> }
+            }
+            @if (publications.correlationId()) { <p>Correlation ID: {{ publications.correlationId() }}</p> }
+            <button type="button" (click)="dismissPublicationError()">Dismiss publication error</button>
+          </section>
+        }
+      </section>
 
       <h3>Finalization history</h3>
       @if (finalizations.historyState() === 'loading') {

@@ -7,6 +7,11 @@ import { PlanRequirementEditService } from './plan-requirement-edit.service';
 import { PlanRequirementFieldsComponent } from './plan-requirement-fields.component';
 import { PlanPreferenceService } from './plan-preference.service';
 import { PlanFinalizationService } from './plan-finalization.service';
+import {
+  PlanPublicationService,
+  PublicationOutcome,
+  PublicationResult,
+} from './plan-publication.service';
 import { ActorScopeResetService } from '../identity/actor-scope-reset.service';
 import {
   createRequirementForm,
@@ -38,12 +43,14 @@ export class PlanDetailComponent implements OnDestroy, OnInit {
   readonly requirementEdit = inject(PlanRequirementEditService);
   readonly preferences = inject(PlanPreferenceService);
   readonly finalizations = inject(PlanFinalizationService);
+  readonly publications = inject(PlanPublicationService);
   readonly #scopeReset = inject(ActorScopeResetService);
   readonly #route = inject(ActivatedRoute);
   readonly editForm = createRequirementForm();
   readonly preferenceForm = createPreferenceForm();
   readonly finalizationForm = createPlanFinalizationForm();
   readonly preferenceFormReady = signal(false);
+  readonly publicationReview = signal<RequirementFinalization | null>(null);
   #destroyed = false;
   #preferenceFormPlanId: string | null = null;
   #finalizationFormPlanId: string | null = null;
@@ -56,6 +63,7 @@ export class PlanDetailComponent implements OnDestroy, OnInit {
       this.#preferenceFormPlanId = null;
       this.#finalizationFormPlanId = null;
       this.preferenceFormReady.set(false);
+      this.publicationReview.set(null);
       hydratePreferenceForm(this.preferenceForm, null);
       this.finalizationForm.reset({ candidateWindowId: '', offerDeadline: '' });
     });
@@ -65,6 +73,7 @@ export class PlanDetailComponent implements OnDestroy, OnInit {
         this.requirementEdit.usePlan(planId);
         this.preferences.usePlan(planId);
         this.finalizations.usePlan(planId);
+        this.publications.usePlan(planId);
         void this.loadAndHydrate(planId);
       }
     });
@@ -80,6 +89,7 @@ export class PlanDetailComponent implements OnDestroy, OnInit {
       this.requirementEdit.releasePlan(planId);
       this.preferences.releasePlan(planId);
       this.finalizations.releasePlan(planId);
+      this.publications.releasePlan(planId);
     }
   }
 
@@ -222,7 +232,12 @@ export class PlanDetailComponent implements OnDestroy, OnInit {
     const plan = this.planDetail.plan();
     const planId = this.planId();
     const etag = this.planDetail.etag();
-    if (plan === null || planId === null) {
+    if (
+      plan === null
+      || planId === null
+      || this.publicationReview() !== null
+      || (this.publications.state() !== 'idle' && this.publications.state() !== 'succeeded')
+    ) {
       return;
     }
     if (!validatePlanFinalization(this.finalizationForm, plan)) {
@@ -265,6 +280,83 @@ export class PlanDetailComponent implements OnDestroy, OnInit {
 
   dismissFinalizationError(): void {
     this.finalizations.dismiss();
+  }
+
+  reviewPublication(): void {
+    const candidate = this.finalizations.recoverable();
+    if (
+      candidate?.currentBasis !== true
+      || typeof candidate.finalizationId !== 'string'
+      || this.publications.state() !== 'idle'
+      || this.finalizations.saveState() !== 'idle'
+    ) {
+      return;
+    }
+    this.publications.dismiss();
+    this.publicationReview.set(candidate);
+  }
+
+  cancelPublicationReview(): void {
+    if (this.publications.state() !== 'idle') {
+      return;
+    }
+    this.publicationReview.set(null);
+    this.publications.dismiss();
+  }
+
+  confirmPublication(): void {
+    const plan = this.planDetail.plan();
+    const planId = this.planId();
+    const etag = this.planDetail.etag();
+    const reviewed = this.publicationReview();
+    const current = this.finalizations.recoverable();
+    if (
+      plan === null
+      || planId === null
+      || reviewed?.currentBasis !== true
+      || typeof reviewed.finalizationId !== 'string'
+      || reviewed.finalizationId !== current?.finalizationId
+      || this.finalizations.saveState() !== 'idle'
+    ) {
+      this.publicationReview.set(null);
+      return;
+    }
+    if (etag === null) {
+      void this.loadAndHydrate(planId);
+      return;
+    }
+    void this.publications.publish(planId, reviewed.finalizationId, etag, plan.state)
+      .then((result) => this.handlePublication(result, planId));
+  }
+
+  retryPublication(): void {
+    const planId = this.planId();
+    if (planId !== null) {
+      void this.publications.retry(planId)
+        .then((result) => this.handlePublication(result, planId));
+    }
+  }
+
+  refreshPublicationConflict(): void {
+    const planId = this.planId();
+    if (planId === null) {
+      return;
+    }
+    this.publicationReview.set(null);
+    this.publications.dismiss();
+    void Promise.all([this.planDetail.load(planId), this.finalizations.load(planId)]).then(() => {
+      if (this.#destroyed || this.planId() !== planId) {
+        return;
+      }
+      if (this.finalizations.historyProblemCode() === 'PRIVATE_RESOURCE_NOT_FOUND') {
+        this.planDetail.discardInaccessiblePlan(planId);
+      }
+    });
+  }
+
+  dismissPublicationError(): void {
+    this.publicationReview.set(null);
+    this.publications.dismiss();
   }
 
   loadMoreFinalizations(): void {
@@ -321,6 +413,29 @@ export class PlanDetailComponent implements OnDestroy, OnInit {
       STALE_PREFERENCE_INPUT_PRESENT: 'Some preference input was based on an earlier plan version.',
     } as Record<string, string>)[warning]
       ?? 'The server returned an unrecognized finalization warning.';
+  }
+
+  publicationActionLabel(state: string | undefined): string {
+    return state === 'OPEN_FOR_OFFERS'
+      ? 'Confirm and publish replacement request'
+      : 'Confirm and publish request';
+  }
+
+  publicationOutcomeLabel(outcome: PublicationOutcome): string {
+    return ({
+      initial: 'Initial provider request published',
+      replacement: 'Replacement provider request published',
+      versioned: 'Provider request version published',
+    } as const)[outcome];
+  }
+
+  publicationStateLabel(state: string | undefined): string {
+    return ({
+      OPEN: 'Open',
+      SUPERSEDED: 'Superseded',
+      CLOSED: 'Closed',
+      CANCELLED: 'Cancelled',
+    } as Record<string, string>)[state ?? ''] ?? 'Unavailable state';
   }
 
   stateLabel(state: string | undefined): string {
@@ -407,6 +522,13 @@ export class PlanDetailComponent implements OnDestroy, OnInit {
       ) {
         this.planDetail.discardInaccessiblePlan(planId);
       }
+      const reviewedId = this.publicationReview()?.finalizationId;
+      if (
+        reviewedId !== undefined
+        && reviewedId !== this.finalizations.recoverable()?.finalizationId
+      ) {
+        this.publicationReview.set(null);
+      }
     }
   }
 
@@ -424,6 +546,10 @@ export class PlanDetailComponent implements OnDestroy, OnInit {
       return;
     }
 
+    this.publicationReview.set(null);
+    if (this.publications.state() === 'succeeded') {
+      this.publications.dismiss();
+    }
     const actorGeneration = this.#scopeReset.generation();
     await this.planDetail.load(planId);
     if (
@@ -445,6 +571,25 @@ export class PlanDetailComponent implements OnDestroy, OnInit {
     ) {
       this.planDetail.discardInaccessiblePlan(planId);
     }
+  }
+
+  private async handlePublication(
+    result: PublicationResult | null,
+    planId: string,
+  ): Promise<void> {
+    if (this.#destroyed || this.planId() !== planId) {
+      return;
+    }
+    if (result === null) {
+      if (this.publications.problemCode() === 'PRIVATE_RESOURCE_NOT_FOUND') {
+        this.publicationReview.set(null);
+        this.planDetail.discardInaccessiblePlan(planId);
+      }
+      return;
+    }
+
+    this.publicationReview.set(null);
+    await this.loadAndHydrate(planId);
   }
 
   private isCurrentLoad(
