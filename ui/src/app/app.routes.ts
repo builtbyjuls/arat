@@ -26,8 +26,10 @@ export const routes: Routes = [
   },
   {
     path: 'groups/:groupId/plans',
-    ...privateRoute,
-    data: { requiresIdentity: true, title: 'Plans', summary: 'This group\'s plans will appear here.' },
+    canActivate: [localActorRouteGuard],
+    loadComponent: () => import('./planning/plan-index.component')
+      .then((component) => component.PlanIndexComponent),
+    data: { requiresIdentity: true },
   },
   {
     path: 'groups/:groupId',

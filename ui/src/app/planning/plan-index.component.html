@@ -1,0 +1,32 @@
+<section aria-labelledby="plans-heading">
+  @if (planIndex.state() === 'loading') {
+    <h1 id="plans-heading" data-route-heading tabindex="-1">Loading plans...</h1>
+    <p class="status" role="status">Loading this group's plans...</p>
+  } @else if (planIndex.state() === 'not-found') {
+    <h1 id="plans-heading" data-route-heading tabindex="-1">Plans unavailable</h1>
+    <section class="state" aria-live="assertive" role="alert">
+      <p>These plans are unavailable.</p>
+      <a routerLink="/groups">Return to your groups</a>
+    </section>
+  } @else {
+    <div class="heading-row">
+      <div><h1 id="plans-heading" data-route-heading tabindex="-1">Plans</h1><p>Private plans for this group.</p></div>
+      <button type="button" (click)="refresh()" [disabled]="planIndex.state() === 'loading-more' || planIndex.state() === 'refreshing'">Refresh</button>
+    </div>
+    @if (planIndex.state() === 'error' && planIndex.plans().length === 0) {
+      <section class="state" aria-live="assertive" role="alert"><h2>Plans are unavailable</h2><p>Try refreshing. If the problem continues, use the correlation ID when contacting support.</p>@if (planIndex.correlationId()) { <p>Correlation ID: {{ planIndex.correlationId() }}</p> }</section>
+    } @else if (planIndex.state() === 'empty') {
+      <section class="state" aria-live="polite" role="status"><h2>No collaborative plans yet</h2><p>Plans created for this group will appear here.</p></section>
+    } @else {
+      @if (planIndex.state() === 'error') { <section class="state" aria-live="assertive" role="alert"><h2>Plans could not be refreshed</h2><p>Your previously loaded plans are still shown. Try refreshing again.</p>@if (planIndex.correlationId()) { <p>Correlation ID: {{ planIndex.correlationId() }}</p> }</section> }
+      <ul class="plan-list">
+        @for (plan of planIndex.plans(); track plan.planId) {
+          <li><a class="plan-card" [routerLink]="['/plans', plan.planId]"><span class="plan-title">{{ plan.title }}</span><span class="state-label">{{ plan.state }}</span></a></li>
+        }
+      </ul>
+      @if (planIndex.state() === 'loading-more') { <p class="status" role="status">Loading more plans...</p> }
+      @if (planIndex.state() === 'refreshing') { <p class="status" role="status">Refreshing plans...</p> }
+      @if (planIndex.nextCursor() !== null) { <button type="button" class="load-more" (click)="loadMore()" [disabled]="planIndex.state() === 'loading-more'">Load more plans</button> }
+    }
+  }
+</section>
