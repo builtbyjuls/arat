@@ -47,8 +47,10 @@ export const routes: Routes = [
   },
   {
     path: 'plans/:planId',
-    ...privateRoute,
-    data: { requiresIdentity: true, title: 'Plan', summary: 'Plan details will appear here.' },
+    canActivate: [localActorRouteGuard],
+    loadComponent: () => import('./planning/plan-detail.component')
+      .then((component) => component.PlanDetailComponent),
+    data: { requiresIdentity: true },
   },
   {
     path: 'providers',

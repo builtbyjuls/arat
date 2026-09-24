@@ -1,0 +1,70 @@
+<section aria-labelledby="plan-heading">
+  @if (planDetail.state() === 'loading') {
+    <h1 id="plan-heading" data-route-heading tabindex="-1">Loading plan...</h1>
+    <p class="status" role="status">Loading this private plan...</p>
+  } @else if (planDetail.state() === 'not-found') {
+    <h1 id="plan-heading" data-route-heading tabindex="-1">Plan unavailable</h1>
+    <section class="state" aria-live="assertive" role="alert">
+      <p>This plan is unavailable.</p>
+      <a routerLink="/groups">Return to your groups</a>
+    </section>
+  } @else if (planDetail.state() === 'error') {
+    <h1 id="plan-heading" data-route-heading tabindex="-1">Plan unavailable</h1>
+    <section class="state" aria-live="assertive" role="alert">
+      <p>This plan could not be loaded. Try again.</p>
+      @if (planDetail.correlationId()) { <p>Correlation ID: {{ planDetail.correlationId() }}</p> }
+      <button type="button" (click)="refresh()">Reload plan</button>
+      <a routerLink="/groups">Return to your groups</a>
+    </section>
+  } @else if (planDetail.plan(); as plan) {
+    <div class="heading-row">
+      <div>
+        <h1 id="plan-heading" data-route-heading tabindex="-1">{{ plan.title ?? 'Untitled plan' }}</h1>
+        <p class="state-label">Collaboration state: {{ stateLabel(plan.state) }}</p>
+        <p>Plan version: {{ plan.version ?? 'Unavailable' }}</p>
+        <p class="stale-indicator" role="status">Showing the last server response. Refresh before taking a later action.</p>
+      </div>
+      <button type="button" (click)="refresh()">Refresh plan</button>
+    </div>
+
+    <section class="detail-card" aria-labelledby="requirements-heading">
+      <h2 id="requirements-heading">Requirements</h2>
+      @if (plan.requirements; as requirements) {
+        <dl>
+          <div><dt>Activity</dt><dd>{{ requirements.category ?? 'Unavailable' }}</dd></div>
+          <div><dt>Time zone</dt><dd>{{ requirements.timeZone ?? 'Unavailable' }}</dd></div>
+          <div><dt>Area</dt><dd>{{ requirements.area?.code ?? 'Unavailable' }} @if (requirements.area) { ({{ requirements.area.radiusKm }} km radius) }</dd></div>
+          <div><dt>Group size</dt><dd>{{ requirements.headcount?.minimum ?? 'Unavailable' }} to {{ requirements.headcount?.maximum ?? 'Unavailable' }}</dd></div>
+          @if (requirements.budget; as budget) { <div><dt>Budget</dt><dd>{{ budget.currency }} {{ budget.minimumAmount }} to {{ budget.maximumAmount }}</dd></div> }
+        </dl>
+
+        <h3>Candidate windows</h3>
+        @if ((requirements.candidateWindows?.length ?? 0) > 0) {
+          <ul class="window-list">
+            @for (window of requirements.candidateWindows; track window.id) {
+              <li>{{ formatWindow(window.startAt, requirements.timeZone) }} to {{ formatWindow(window.endAt, requirements.timeZone) }}</li>
+            }
+          </ul>
+        } @else { <p>No candidate windows are available.</p> }
+
+        <h3>Must-haves</h3>
+        @if ((requirements.mustHaves?.length ?? 0) > 0) {
+          <ul class="tag-list">@for (mustHave of requirements.mustHaves; track mustHave) { <li>{{ mustHave }}</li> }</ul>
+        } @else { <p>No must-haves are listed.</p> }
+
+        @if (requirements.providerSafeNotes) { <h3>Provider-safe notes</h3><p>{{ requirements.providerSafeNotes }}</p> }
+        @if (requirements.categoryAttributes; as attributes) {
+          <h3>Category details</h3>
+          <dl>@for (attribute of attributes | keyvalue; track attribute.key) { <div><dt>{{ attribute.key }}</dt><dd>{{ attributeValue(attribute.value) }}</dd></div> }</dl>
+        }
+      } @else { <p>Requirements are unavailable.</p> }
+    </section>
+
+    <section class="detail-card" aria-labelledby="actions-heading">
+      <h2 id="actions-heading">Action availability</h2>
+      <p>{{ actionGuidance(plan.state) }}</p>
+      <p>Member action: sharing availability and preferences will appear here in a later step.</p>
+      <p>Organizer-only actions are requirement changes, finalization, publication, and cancellation. The server verifies organizer authority when those actions are available.</p>
+    </section>
+  }
+</section>

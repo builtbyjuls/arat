@@ -18,6 +18,15 @@ describe('PlanApi', () => {
     expect(params.get('limit')).toBe('20');
   });
 
+  it('reads a private plan through its canonical plan route', () => {
+    const read = vi.fn(() => of({ body: null }));
+    TestBed.configureTestingModule({ providers: [{ provide: ApiHttpClient, useValue: { read } }] });
+
+    TestBed.inject(PlanApi).read('plan id').subscribe();
+
+    expect(read).toHaveBeenCalledWith('/plans/plan%20id');
+  });
+
   it('creates a complete group-scoped idempotent intent', () => {
     const intent = { idempotencyKey: 'key-1' } as IdempotentMutationIntent<unknown>;
     const beginIdempotentMutation = vi.fn(() => intent);

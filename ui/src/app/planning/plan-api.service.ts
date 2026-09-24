@@ -9,6 +9,7 @@ import {
 } from '../api/api-http-client';
 
 export type CreatePlanRequest = components['schemas']['CreatePlanRequest'];
+export type PlanDetail = components['schemas']['PlanDetailRepresentation'];
 export type PlanPage = components['schemas']['PlanPageRepresentation'];
 export type PlanRepresentation = components['schemas']['PlanRepresentation'];
 export type PlanSummary = components['schemas']['PlanSummaryRepresentation'];
@@ -25,6 +26,10 @@ export class PlanApi {
       params = params.set('cursor', cursor);
     }
     return this.#api.read<PlanPage>(`/groups/${encodeURIComponent(groupId)}/plans`, params);
+  }
+
+  read(planId: string): Observable<ApiHttpResult<PlanDetail>> {
+    return this.#api.read<PlanDetail>(`/plans/${encodeURIComponent(planId)}`);
   }
 
   createIntent(
