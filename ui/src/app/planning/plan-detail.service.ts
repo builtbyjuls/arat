@@ -53,6 +53,17 @@ export class PlanDetailService {
     }
   }
 
+  discardInaccessiblePlan(planId: string): void {
+    if (this.#resourceId !== planId) {
+      return;
+    }
+    this.#requestId += 1;
+    this.#plan.set(null);
+    this.#etag.set(null);
+    this.#correlationId.set(null);
+    this.#state.set('not-found');
+  }
+
   private reset(): void { this.#requestId += 1; this.clearResource(null); }
   private clearResource(planId: string | null): void {
     this.#resourceId = planId;

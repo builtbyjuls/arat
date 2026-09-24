@@ -11,9 +11,15 @@
   } @else if (planDetail.state() === 'error') {
     <h1 id="plan-heading" data-route-heading tabindex="-1">Plan unavailable</h1>
     <section class="state" aria-live="assertive" role="alert">
-      <p>This plan could not be loaded. Try again.</p>
-      @if (planDetail.correlationId()) { <p>Correlation ID: {{ planDetail.correlationId() }}</p> }
-      <button type="button" (click)="refresh()">Reload plan</button>
+      @if (requirementEdit.state() === 'conflict') {
+        <p>The current plan version could not be loaded. Your unsaved requirement fields are still preserved.</p>
+        @if (planDetail.correlationId()) { <p>Correlation ID: {{ planDetail.correlationId() }}</p> }
+        <button type="button" (click)="refreshAfterConflict()">Retry current plan refresh</button>
+      } @else {
+        <p>This plan could not be loaded. Try again.</p>
+        @if (planDetail.correlationId()) { <p>Correlation ID: {{ planDetail.correlationId() }}</p> }
+        <button type="button" (click)="refresh()">Reload plan</button>
+      }
       <a routerLink="/groups">Return to your groups</a>
     </section>
   } @else if (planDetail.plan(); as plan) {
@@ -24,7 +30,7 @@
         <p>Plan version: {{ plan.version ?? 'Unavailable' }}</p>
         <p class="stale-indicator" role="status">Showing the last server response. Refresh before taking a later action.</p>
       </div>
-      <button type="button" (click)="refresh()">Refresh plan</button>
+      <button type="button" (click)="refresh()" [disabled]="requirementEdit.state() === 'conflict' || requirementEdit.state() === 'network-error' || requirementEdit.state() === 'reapply-ready' || requirementEdit.state() === 'submitting'">Refresh plan</button>
     </div>
 
     <section class="detail-card" aria-labelledby="requirements-heading">
@@ -58,6 +64,70 @@
           <dl>@for (attribute of attributes | keyvalue; track attribute.key) { <div><dt>{{ attribute.key }}</dt><dd>{{ attributeValue(attribute.value) }}</dd></div> }</dl>
         }
       } @else { <p>Requirements are unavailable.</p> }
+    </section>
+
+    <section class="detail-card requirement-editor" aria-labelledby="requirement-editor-heading">
+      <h2 id="requirement-editor-heading">Edit plan requirements</h2>
+      <p>This is an organizer action. The server checks your current role, plan state, and plan version when you submit.</p>
+      @if (plan.state === 'CANCELLED') {
+        <p role="status">Cancelled plan requirements cannot be changed.</p>
+      } @else {
+        <form [formGroup]="editForm" (ngSubmit)="submitRequirements()">
+          <app-plan-requirement-fields [form]="editForm" [serverViolations]="requirementEdit.violations()" />
+          <button type="submit" class="primary-action" [disabled]="requirementEdit.state() !== 'idle'">
+            {{ requirementEdit.state() === 'submitting' ? 'Saving requirements...' : 'Save requirements' }}
+          </button>
+        </form>
+
+        @if (requirementEdit.state() === 'network-error') {
+          <section class="command-state" aria-live="assertive" role="alert">
+            <p>The update could not reach the server. Retry to send the exact same requirements with the same plan version.</p>
+            @if (requirementEdit.correlationId()) { <p>Correlation ID: {{ requirementEdit.correlationId() }}</p> }
+            <div class="command-actions">
+              <button type="button" (click)="retryRequirements()">Retry exact update</button>
+              <button type="button" (click)="dismissRequirementError()">Dismiss</button>
+            </div>
+          </section>
+        } @else if (requirementEdit.state() === 'conflict') {
+          <section class="command-state" aria-live="assertive" role="alert">
+            <p>The plan changed after this form was loaded. Your unsaved fields are preserved.</p>
+            <p>Refresh the current plan version, review every field, and then choose whether to reapply this full replacement.</p>
+            <button type="button" (click)="refreshAfterConflict()">Refresh current plan version</button>
+          </section>
+        } @else if (requirementEdit.state() === 'reapply-ready') {
+          <section class="command-state conflict-ready" aria-live="polite" role="status">
+            <p>The latest plan version is loaded. Your unsaved fields have not been submitted or merged.</p>
+            <p>Reapplying replaces every requirement field shown above.</p>
+            <div class="command-actions">
+              <button type="button" (click)="reapplyRequirements()">Reapply my changes</button>
+              <button type="button" (click)="refresh()">Discard changes</button>
+            </div>
+          </section>
+        } @else if (requirementEdit.state() === 'error') {
+          <section class="command-state" aria-live="assertive" role="alert">
+            @if (requirementEdit.problemCode() === 'VALIDATION_FAILED') {
+              <p>The requirements need the highlighted corrections.</p>
+              @if (requirementEdit.violations().length > 0) {
+                <ul class="validation-summary" aria-label="Requirement validation errors">
+                  @for (violation of requirementEdit.violations(); track violation.field + violation.message) {
+                    <li><span class="violation-field">{{ violation.field }}:</span> {{ violation.message }}</li>
+                  }
+                </ul>
+              }
+            } @else if (requirementEdit.problemCode() === 'FORBIDDEN_ROLE' || requirementEdit.problemCode() === 'ACCESS_DENIED') {
+              <p>Your current role cannot change these requirements.</p>
+            } @else if (requirementEdit.problemCode() === 'PRIVATE_RESOURCE_NOT_FOUND') {
+              <p>This plan is unavailable.</p>
+            } @else if (requirementEdit.problemCode() === 'INVALID_PLAN_STATE') {
+              <p>The plan no longer allows requirement changes. Refresh to see its current state.</p>
+            } @else {
+              <p>The requirements could not be updated. Review the form and try again.</p>
+            }
+            @if (requirementEdit.correlationId()) { <p>Correlation ID: {{ requirementEdit.correlationId() }}</p> }
+            <button type="button" (click)="dismissRequirementError()">Dismiss</button>
+          </section>
+        }
+      }
     </section>
 
     <section class="detail-card" aria-labelledby="actions-heading">

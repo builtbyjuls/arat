@@ -55,6 +55,17 @@ describe('PlanDetailService', () => {
     expect(service.plan()).toBeNull();
     expect(service.etag()).toBeNull();
   });
+
+  it('clears a loaded plan when a later command proves it inaccessible', async () => {
+    const service = setup({ read: vi.fn(() => of(detailResult())) });
+
+    await service.load('plan-1');
+    service.discardInaccessiblePlan('plan-1');
+
+    expect(service.state()).toBe('not-found');
+    expect(service.plan()).toBeNull();
+    expect(service.etag()).toBeNull();
+  });
 });
 
 function setup(api: Pick<PlanApi, 'read'>): PlanDetailService {

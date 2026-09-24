@@ -4,7 +4,10 @@ import {
   createCategoryAttributeForm,
   createMustHaveControl,
   createPlanRequest,
+  createRequirementReplacementRequest,
   createRequirementForm,
+  hydrateRequirementForm,
+  instantToLocalDateTime,
   localDateTimeToOffset,
 } from './plan-requirement-form';
 
@@ -103,6 +106,108 @@ describe('plan requirement form', () => {
       .toBe('2027-01-09T09:30:00+05:45');
     expect(localDateTimeToOffset('2027-01-09T09:30', 'UTC'))
       .toBe('2027-01-09T09:30:00+00:00');
+  });
+
+  it('hydrates and round-trips existing requirements with stable IDs and exact strings', () => {
+    const form = createRequirementForm();
+    hydrateRequirementForm(form, {
+      planId: 'plan-1',
+      title: 'Friday badminton',
+      state: 'COLLABORATING',
+      version: 7,
+      requirements: {
+        category: 'COURT',
+        timeZone: 'Asia/Manila',
+        candidateWindows: [
+          { id: 'window-1', startAt: '2027-01-09T01:00:00Z', endAt: '2027-01-09T03:00:00Z' },
+          { id: 'window-2', startAt: '2027-01-10T05:30:00Z', endAt: '2027-01-10T07:30:00Z' },
+        ],
+        area: { code: 'BGC', radiusKm: 5 },
+        headcount: { minimum: 4, maximum: 10 },
+        budget: { currency: 'PHP', minimumAmount: '0.00', maximumAmount: '2500.00' },
+        mustHaves: ['parking', 'shower'],
+        providerSafeNotes: 'Indoor court preferred.',
+        categoryAttributes: { hasParking: true, courtCount: 2, surface: 'wood' },
+      },
+    });
+    form.controls.budget.controls.minimumAmount.setValue('123.40');
+    form.controls.candidateWindows.push(createCandidateWindowForm(
+      '2027-01-11T09:00',
+      '2027-01-11T11:00',
+    ));
+
+    const request = createRequirementReplacementRequest(form);
+
+    expect(request.title).toBe('Friday badminton');
+    expect(request.timeZone).toBe('Asia/Manila');
+    expect(request.budget).toEqual({
+      currency: 'PHP', minimumAmount: '123.40', maximumAmount: '2500.00',
+    });
+    expect(request.mustHaves).toEqual(['parking', 'shower']);
+    expect(request.providerSafeNotes).toBe('Indoor court preferred.');
+    expect(request.categoryAttributes).toEqual({ hasParking: true, courtCount: 2, surface: 'wood' });
+    expect(request.candidateWindows).toEqual([
+      { id: 'window-1', startAt: '2027-01-09T01:00:00Z', endAt: '2027-01-09T03:00:00Z' },
+      { id: 'window-2', startAt: '2027-01-10T05:30:00Z', endAt: '2027-01-10T07:30:00Z' },
+      { startAt: '2027-01-11T09:00:00+08:00', endAt: '2027-01-11T11:00:00+08:00' },
+    ]);
+  });
+
+  it('formats API instants in the named plan zone instead of the browser zone', () => {
+    expect(instantToLocalDateTime('2027-01-09T01:30:00Z', 'Asia/Manila'))
+      .toBe('2027-01-09T09:30');
+    expect(instantToLocalDateTime('2027-01-09T01:30:00Z', 'Asia/Kathmandu'))
+      .toBe('2027-01-09T07:15');
+  });
+
+  it('keeps a null budget absent and preserves untouched DST-fold instants exactly', () => {
+    const form = createRequirementForm();
+    hydrateRequirementForm(form, {
+      planId: 'plan-1',
+      title: 'Late fall gathering',
+      state: 'COLLABORATING',
+      version: 4,
+      requirements: {
+        category: 'GROUP_DINING',
+        timeZone: 'America/New_York',
+        candidateWindows: [
+          {
+            id: 'window-fold',
+            startAt: '2027-11-07T05:45:12.123456Z',
+            endAt: '2027-11-07T06:15:34.654321Z',
+          },
+          {
+            id: 'window-sub-minute',
+            startAt: '2027-11-07T12:00:10.111111Z',
+            endAt: '2027-11-07T12:00:20.222222Z',
+          },
+        ],
+        area: { code: 'NYC', radiusKm: 4 },
+        headcount: { minimum: 4, maximum: 8 },
+        budget: null as never,
+        mustHaves: [],
+        categoryAttributes: {},
+      },
+    });
+    form.controls.title.setValue('Updated title only');
+
+    const request = createRequirementReplacementRequest(form);
+
+    expect(form.controls.budgetEnabled.value).toBe(false);
+    expect(form.valid).toBe(true);
+    expect(request.budget).toBeUndefined();
+    expect(request.candidateWindows).toEqual([
+      {
+        id: 'window-fold',
+        startAt: '2027-11-07T05:45:12.123456Z',
+        endAt: '2027-11-07T06:15:34.654321Z',
+      },
+      {
+        id: 'window-sub-minute',
+        startAt: '2027-11-07T12:00:10.111111Z',
+        endAt: '2027-11-07T12:00:20.222222Z',
+      },
+    ]);
   });
 });
 

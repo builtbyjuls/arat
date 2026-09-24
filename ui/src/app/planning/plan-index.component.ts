@@ -73,6 +73,9 @@ export class PlanIndexComponent implements OnDestroy, OnInit {
   }
 
   private updateConditionalValidation(): void {
+    for (const window of this.createForm.controls.candidateWindows.controls) {
+      window.updateValueAndValidity({ emitEvent: false });
+    }
     this.createForm.controls.candidateWindows.updateValueAndValidity({ emitEvent: false });
     const budget = this.createForm.controls.budget.controls;
     budget.minimumAmount.updateValueAndValidity({ emitEvent: false });

@@ -27,6 +27,24 @@ describe('PlanApi', () => {
     expect(read).toHaveBeenCalledWith('/plans/plan%20id');
   });
 
+  it('replaces requirements with the loaded plan ETag and no command key', () => {
+    const mutate = vi.fn(() => of({ body: null }));
+    TestBed.configureTestingModule({ providers: [{ provide: ApiHttpClient, useValue: { mutate } }] });
+    const request = {
+      title: 'Friday badminton', category: 'COURT' as const, timeZone: 'Asia/Manila',
+      candidateWindows: [{ id: 'window-1', startAt: '2027-01-09T09:00:00+08:00', endAt: '2027-01-09T11:00:00+08:00' }],
+      area: { code: 'BGC', radiusKm: 5 }, headcount: { minimum: 4, maximum: 10 },
+      mustHaves: [], categoryAttributes: {},
+    };
+
+    TestBed.inject(PlanApi).replaceRequirements('plan id', request, '"7"').subscribe();
+
+    expect(mutate).toHaveBeenCalledWith({
+      method: 'PUT', path: '/plans/plan%20id/requirements', body: request,
+      precondition: { header: 'If-Match', value: '"7"' },
+    });
+  });
+
   it('creates a complete group-scoped idempotent intent', () => {
     const intent = { idempotencyKey: 'key-1' } as IdempotentMutationIntent<unknown>;
     const beginIdempotentMutation = vi.fn(() => intent);

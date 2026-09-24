@@ -5,12 +5,17 @@ import {
   ValidatorFn,
   Validators,
 } from '@angular/forms';
-import { CreatePlanRequest } from './plan-api.service';
+import {
+  CreatePlanRequest,
+  PlanDetail,
+  RequirementReplacementRequest,
+} from './plan-api.service';
 
 export type ActivityCategory = 'COURT' | 'GROUP_DINING' | 'KTV';
 export type CategoryAttributeType = 'boolean' | 'integer' | 'string';
 
 export type CandidateWindowForm = FormGroup<{
+  id: FormControl<string | null>;
   startAt: FormControl<string>;
   endAt: FormControl<string>;
 }>;
@@ -44,10 +49,19 @@ export type RequirementForm = FormGroup<{
   categoryAttributes: FormArray<CategoryAttributeForm>;
 }>;
 
+interface CandidateWindowOriginal {
+  readonly endAt: string;
+  readonly endLocal: string;
+  readonly startAt: string;
+  readonly startLocal: string;
+  readonly timeZone: string;
+}
+
 const MONEY_PATTERN = /^(0|[1-9][0-9]{0,6})\.[0-9]{2}$/;
 const ATTRIBUTE_KEY_PATTERN = /^[a-z][A-Za-z0-9]{0,39}$/;
 const LOCAL_DATE_TIME_PATTERN = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/;
 const MAX_MONEY_CENTAVOS = 100_000_000n;
+const candidateWindowOriginals = new WeakMap<CandidateWindowForm, CandidateWindowOriginal>();
 
 export function createRequirementForm(): RequirementForm {
   return new FormGroup({
@@ -83,8 +97,10 @@ export function createRequirementForm(): RequirementForm {
 export function createCandidateWindowForm(
   startAt = '',
   endAt = '',
+  id: string | null = null,
 ): CandidateWindowForm {
   return new FormGroup({
+    id: new FormControl(id),
     startAt: textControl(startAt, [Validators.required]),
     endAt: textControl(endAt, [Validators.required]),
   }, { validators: localDateTimeRange() });
@@ -103,6 +119,87 @@ export function createCategoryAttributeForm(): CategoryAttributeForm {
 }
 
 export function createPlanRequest(form: RequirementForm): CreatePlanRequest {
+  const request = requirementRequestValue(form);
+  return {
+    ...request,
+    candidateWindows: request.candidateWindows.map(({ startAt, endAt }) => ({ startAt, endAt })),
+  };
+}
+
+export function createRequirementReplacementRequest(
+  form: RequirementForm,
+): RequirementReplacementRequest {
+  return requirementRequestValue(form);
+}
+
+export function hydrateRequirementForm(form: RequirementForm, plan: PlanDetail): void {
+  const requirements = plan.requirements;
+  const timeZone = requirements?.timeZone ?? '';
+  const windows = requirements?.candidateWindows ?? [];
+
+  form.reset({
+    title: plan.title ?? '',
+    category: isActivityCategory(requirements?.category) ? requirements.category : 'COURT',
+    timeZone,
+    area: {
+      code: requirements?.area?.code ?? '',
+      radiusKm: requirements?.area?.radiusKm ?? 5,
+    },
+    headcount: {
+      minimum: requirements?.headcount?.minimum ?? 1,
+      maximum: requirements?.headcount?.maximum ?? 1,
+    },
+    budgetEnabled: requirements?.budget != null,
+    budget: {
+      minimumAmount: requirements?.budget?.minimumAmount ?? '',
+      maximumAmount: requirements?.budget?.maximumAmount ?? '',
+    },
+    providerSafeNotes: requirements?.providerSafeNotes ?? '',
+  });
+
+  form.controls.candidateWindows.clear();
+  for (const window of windows) {
+    const startAt = window.startAt ?? '';
+    const endAt = window.endAt ?? '';
+    const startLocal = instantToLocalDateTime(startAt, timeZone);
+    const endLocal = instantToLocalDateTime(endAt, timeZone);
+    const candidateWindow = createCandidateWindowForm(startLocal, endLocal, window.id ?? null);
+    candidateWindowOriginals.set(candidateWindow, {
+      startAt,
+      endAt,
+      startLocal,
+      endLocal,
+      timeZone,
+    });
+    form.controls.candidateWindows.push(candidateWindow);
+    candidateWindow.updateValueAndValidity();
+  }
+  if (form.controls.candidateWindows.length === 0) {
+    form.controls.candidateWindows.push(createCandidateWindowForm());
+  }
+
+  form.controls.mustHaves.clear();
+  for (const mustHave of requirements?.mustHaves ?? []) {
+    form.controls.mustHaves.push(createMustHaveControl(mustHave));
+  }
+
+  form.controls.categoryAttributes.clear();
+  for (const [key, value] of Object.entries(requirements?.categoryAttributes ?? {})) {
+    const attribute = createCategoryAttributeForm();
+    attribute.setValue({
+      key,
+      type: categoryAttributeType(value),
+      value: String(value),
+    });
+    form.controls.categoryAttributes.push(attribute);
+  }
+
+  form.markAsPristine();
+  form.markAsUntouched();
+  form.updateValueAndValidity();
+}
+
+function requirementRequestValue(form: RequirementForm): RequirementReplacementRequest {
   const value = form.getRawValue();
   const timeZone = value.timeZone.trim();
   const categoryAttributes: Record<string, boolean | number | string> = {};
@@ -120,10 +217,23 @@ export function createPlanRequest(form: RequirementForm): CreatePlanRequest {
     title: value.title.trim(),
     category: value.category,
     timeZone,
-    candidateWindows: value.candidateWindows.map((window) => ({
-      startAt: localDateTimeToOffset(window.startAt, timeZone),
-      endAt: localDateTimeToOffset(window.endAt, timeZone),
-    })),
+    candidateWindows: form.controls.candidateWindows.controls.map((windowForm) => {
+      const window = windowForm.getRawValue();
+      const original = candidateWindowOriginals.get(windowForm);
+      return {
+        ...(window.id === null ? {} : { id: window.id }),
+        startAt: original !== undefined
+          && original.timeZone === timeZone
+          && original.startLocal === window.startAt
+          ? original.startAt
+          : localDateTimeToOffset(window.startAt, timeZone),
+        endAt: original !== undefined
+          && original.timeZone === timeZone
+          && original.endLocal === window.endAt
+          ? original.endAt
+          : localDateTimeToOffset(window.endAt, timeZone),
+      };
+    }),
     area: {
       code: value.area.code.trim(),
       radiusKm: value.area.radiusKm,
@@ -142,6 +252,18 @@ export function createPlanRequest(form: RequirementForm): CreatePlanRequest {
       : {}),
     categoryAttributes,
   };
+}
+
+export function instantToLocalDateTime(instant: string, timeZone: string): string {
+  if (!isIanaTimeZone(timeZone)) {
+    throw new Error('A valid instant and IANA time zone are required.');
+  }
+  const parsed = new Date(instant);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error('A valid instant and IANA time zone are required.');
+  }
+  const parts = dateTimeParts(parsed.getTime(), timeZone);
+  return `${parts.year}-${pad(parts.month)}-${pad(parts.day)}T${pad(parts.hour)}:${pad(parts.minute)}`;
 }
 
 export function localDateTimeToOffset(value: string, timeZone: string): string {
@@ -215,7 +337,37 @@ function localDateTimeRange(): ValidatorFn {
     if (typeof startAt !== 'string' || typeof endAt !== 'string' || startAt.length === 0 || endAt.length === 0) {
       return null;
     }
-    return startAt < endAt ? null : { invalidInterval: true };
+    const windowForm = control as CandidateWindowForm;
+    const original = candidateWindowOriginals.get(windowForm);
+    const timeZone = control.parent?.parent?.get('timeZone')?.value;
+    if (
+      original !== undefined
+      && timeZone === original.timeZone
+      && startAt === original.startLocal
+      && endAt === original.endLocal
+    ) {
+      return null;
+    }
+    if (typeof timeZone !== 'string') {
+      return startAt < endAt ? null : { invalidInterval: true };
+    }
+    try {
+      const submittedStart = original !== undefined
+        && timeZone === original.timeZone
+        && startAt === original.startLocal
+        ? original.startAt
+        : localDateTimeToOffset(startAt, timeZone);
+      const submittedEnd = original !== undefined
+        && timeZone === original.timeZone
+        && endAt === original.endLocal
+        ? original.endAt
+        : localDateTimeToOffset(endAt, timeZone);
+      return new Date(submittedStart).getTime() < new Date(submittedEnd).getTime()
+        ? null
+        : { invalidInterval: true };
+    } catch {
+      return null;
+    }
   };
 }
 
@@ -344,4 +496,18 @@ function dateTimeParts(instant: number, timeZone: string): Record<'day' | 'hour'
 
 function pad(value: number): string {
   return value.toString().padStart(2, '0');
+}
+
+function isActivityCategory(value: unknown): value is ActivityCategory {
+  return value === 'COURT' || value === 'GROUP_DINING' || value === 'KTV';
+}
+
+function categoryAttributeType(value: unknown): CategoryAttributeType {
+  if (typeof value === 'boolean') {
+    return 'boolean';
+  }
+  if (typeof value === 'number' && Number.isInteger(value)) {
+    return 'integer';
+  }
+  return 'string';
 }

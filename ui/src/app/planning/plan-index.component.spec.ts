@@ -55,7 +55,7 @@ describe('PlanIndexComponent', () => {
     component.createForm.patchValue({
       title: 'Friday badminton', area: { code: 'BGC' }, headcount: { minimum: 4, maximum: 10 },
     });
-    component.createForm.controls.candidateWindows.at(0).setValue({ startAt: '2027-01-09T09:00', endAt: '2027-01-09T11:00' });
+    component.createForm.controls.candidateWindows.at(0).setValue({ id: null, startAt: '2027-01-09T09:00', endAt: '2027-01-09T11:00' });
     const router = TestBed.inject(Router);
     const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
 
@@ -73,7 +73,7 @@ describe('PlanIndexComponent', () => {
     component.createForm.patchValue({
       title: 'Rendered submit', area: { code: 'BGC' }, headcount: { minimum: 2, maximum: 4 },
     });
-    component.createForm.controls.candidateWindows.at(0).setValue({ startAt: '2027-01-09T09:00', endAt: '2027-01-09T11:00' });
+    component.createForm.controls.candidateWindows.at(0).setValue({ id: null, startAt: '2027-01-09T09:00', endAt: '2027-01-09T11:00' });
 
     (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.primary-action')?.click();
     await fixture.whenStable();
@@ -106,7 +106,7 @@ describe('PlanIndexComponent', () => {
     const fixture = await createComponent(fakePlans({ state: 'empty' }), creation);
     const component = fixture.componentInstance;
     component.createForm.patchValue({ title: 'Leaving', area: { code: 'BGC' } });
-    component.createForm.controls.candidateWindows.at(0).setValue({ startAt: '2027-01-09T09:00', endAt: '2027-01-09T11:00' });
+    component.createForm.controls.candidateWindows.at(0).setValue({ id: null, startAt: '2027-01-09T09:00', endAt: '2027-01-09T11:00' });
     const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
     (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.primary-action')?.click();
 
@@ -133,7 +133,7 @@ describe('PlanIndexComponent', () => {
     const fixture = await createComponent(plans, creation);
     const component = fixture.componentInstance;
     component.createForm.patchValue({ title: 'Lost access', area: { code: 'BGC' } });
-    component.createForm.controls.candidateWindows.at(0).setValue({ startAt: '2027-01-09T09:00', endAt: '2027-01-09T11:00' });
+    component.createForm.controls.candidateWindows.at(0).setValue({ id: null, startAt: '2027-01-09T09:00', endAt: '2027-01-09T11:00' });
 
     (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.primary-action')?.click();
     await fixture.whenStable();
@@ -148,11 +148,11 @@ describe('PlanIndexComponent', () => {
     component.createForm.patchValue({
       title: 'DST plan', timeZone: 'America/New_York', area: { code: 'NYC' },
     });
-    component.createForm.controls.candidateWindows.at(0).setValue({ startAt: '2027-03-14T02:30', endAt: '2027-03-14T03:30' });
+    component.createForm.controls.candidateWindows.at(0).setValue({ id: null, startAt: '2027-03-14T02:30', endAt: '2027-03-14T03:30' });
     component.submitCreate();
     expect(component.createForm.controls.candidateWindows.hasError('invalidLocalDateTime')).toBe(true);
 
-    component.createForm.controls.candidateWindows.at(0).setValue({ startAt: '2027-03-14T03:30', endAt: '2027-03-14T04:30' });
+    component.createForm.controls.candidateWindows.at(0).setValue({ id: null, startAt: '2027-03-14T03:30', endAt: '2027-03-14T04:30' });
     component.submitCreate();
     await fixture.whenStable();
 
