@@ -44,6 +44,60 @@
       </ul>
     </section>
 
+    @if (groupDetail.callerRole() === 'ORGANIZER') {
+      <section class="invitation" aria-labelledby="invitation-heading">
+        <h2 id="invitation-heading">Invite a member</h2>
+        @if (invitations.token(); as token) {
+          <p class="status" role="status">Copy this token now. It will disappear when you leave this page, reload, or switch actors.</p>
+          <p class="invitation-token"><code>{{ token }}</code></p>
+          <button type="button" (click)="copyInvitationToken(token)">Copy invitation token</button>
+          @if (copyState() === 'success') {
+            <p class="status" role="status">Token copied. Send it manually to the intended account owner using a channel you trust.</p>
+          } @else if (copyState() === 'error') {
+            <p class="field-error" role="alert">The token could not be copied. Select and copy it manually.</p>
+          }
+        } @else {
+          <p>Invite a known account by ID. The link grants member access only.</p>
+          <form [formGroup]="invitationForm" (ngSubmit)="createInvitation()" novalidate>
+            <label for="invitee-account-id">Invitee account ID</label>
+            <input id="invitee-account-id" formControlName="inviteeAccountId" autocomplete="off" inputmode="text" aria-describedby="invitee-account-id-error">
+            @if (invitationForm.controls.inviteeAccountId.invalid && invitationForm.controls.inviteeAccountId.touched) {
+              <p id="invitee-account-id-error" class="field-error">Enter a valid account ID.</p>
+            } @else if (invitations.violationFor('inviteeAccountId'); as violation) {
+              <p id="invitee-account-id-error" class="field-error">{{ violation.message }}</p>
+            }
+
+            <label for="invitation-expiry-hours">Expiry hours, optional</label>
+            <input id="invitation-expiry-hours" formControlName="expiryHours" autocomplete="off" inputmode="numeric" type="number" min="1" max="168" aria-describedby="invitation-expiry-hours-help invitation-expiry-hours-error">
+            <p id="invitation-expiry-hours-help">Leave blank for 72 hours. Enter a whole number from 1 to 168.</p>
+            @if (invitationForm.controls.expiryHours.invalid && invitationForm.controls.expiryHours.touched) {
+              <p id="invitation-expiry-hours-error" class="field-error">Enter whole expiry hours from 1 to 168.</p>
+            } @else if (invitations.violationFor('expiryHours'); as violation) {
+              <p id="invitation-expiry-hours-error" class="field-error">{{ violation.message }}</p>
+            }
+
+            @if (invitations.state() === 'error') {
+              <section class="field-error" role="alert">
+                <p>{{ invitationErrorMessage() }}</p>
+                @if (invitations.correlationId()) {
+                  <p>Correlation ID: {{ invitations.correlationId() }}</p>
+                }
+              </section>
+            } @else if (invitations.state() === 'retryable') {
+              <section class="field-error" role="alert">
+                <p>The connection failed before the invitation result was known.</p>
+                <button type="button" (click)="invitations.retry()">Retry invitation</button>
+              </section>
+            }
+
+            <button type="submit" [disabled]="invitations.state() === 'submitting'">
+              {{ invitations.state() === 'submitting' ? 'Creating invitation...' : 'Create invitation' }}
+            </button>
+          </form>
+        }
+      </section>
+    }
+
     <a class="plans-link" [routerLink]="['/groups', group.groupId, 'plans']">View plans</a>
   }
 </section>

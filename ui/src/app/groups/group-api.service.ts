@@ -9,10 +9,12 @@ import {
 } from '../api/api-http-client';
 
 export type CreateGroupRequest = components['schemas']['CreateGroupRequest'];
+export type CreateInvitationRequest = components['schemas']['CreateInvitationRequest'];
 export type GroupDetail = components['schemas']['GroupDetailRepresentation'];
 export type GroupPage = components['schemas']['GroupPageRepresentation'];
 export type GroupRepresentation = components['schemas']['GroupRepresentation'];
 export type GroupSummary = components['schemas']['GroupSummaryRepresentation'];
+export type InvitationRepresentation = components['schemas']['InvitationRepresentation'];
 
 const GROUP_PAGE_LIMIT = 20;
 
@@ -39,6 +41,23 @@ export class GroupApi {
   create(
     intent: IdempotentMutationIntent<CreateGroupRequest>,
   ): Observable<ApiHttpResult<GroupRepresentation>> {
+    return this.#api.executeIdempotent(intent);
+  }
+
+  createInvitationIntent(
+    groupId: string,
+    request: CreateInvitationRequest,
+  ): IdempotentMutationIntent<CreateInvitationRequest> {
+    return this.#api.beginIdempotentMutation({
+      method: 'POST',
+      path: `/groups/${encodeURIComponent(groupId)}/invites`,
+      body: request,
+    });
+  }
+
+  createInvitation(
+    intent: IdempotentMutationIntent<CreateInvitationRequest>,
+  ): Observable<ApiHttpResult<InvitationRepresentation>> {
     return this.#api.executeIdempotent(intent);
   }
 

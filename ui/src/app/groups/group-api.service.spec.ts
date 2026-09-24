@@ -3,7 +3,7 @@ import { HttpParams } from '@angular/common/http';
 import { describe, expect, it, vi } from 'vitest';
 import { of } from 'rxjs';
 import { ApiHttpClient, IdempotentMutationIntent } from '../api/api-http-client';
-import { GroupApi } from './group-api.service';
+import { CreateInvitationRequest, GroupApi } from './group-api.service';
 
 describe('GroupApi', () => {
   it('reads only the current actor group index with the bounded page parameters', () => {
@@ -45,5 +45,29 @@ describe('GroupApi', () => {
     TestBed.inject(GroupApi).read('group/id').subscribe();
 
     expect(read).toHaveBeenCalledWith('/groups/group%2Fid');
+  });
+
+  it('keeps invitation creation on the explicit idempotent HTTP boundary', () => {
+    const request: CreateInvitationRequest = {
+      inviteeAccountId: '10000000-0000-4000-8000-000000000002',
+      expiryHours: 72,
+    };
+    const intent = { idempotencyKey: 'invitation-key' } as IdempotentMutationIntent<CreateInvitationRequest>;
+    const beginIdempotentMutation = vi.fn(() => intent);
+    const executeIdempotent = vi.fn(() => of({ body: { token: 'secret-token' } }));
+    TestBed.configureTestingModule({
+      providers: [{ provide: ApiHttpClient, useValue: { beginIdempotentMutation, executeIdempotent } }],
+    });
+    const api = TestBed.inject(GroupApi);
+
+    const createdIntent = api.createInvitationIntent('group/id', request);
+    api.createInvitation(createdIntent).subscribe();
+
+    expect(beginIdempotentMutation).toHaveBeenCalledWith({
+      method: 'POST',
+      path: '/groups/group%2Fid/invites',
+      body: request,
+    });
+    expect(executeIdempotent).toHaveBeenCalledWith(createdIntent);
   });
 });

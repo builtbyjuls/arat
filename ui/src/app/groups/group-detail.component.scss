@@ -25,6 +25,7 @@ button,
   padding: var(--space-2) var(--space-4);
 }
 
+.invitation,
 .members,
 .state {
   background: var(--color-surface);
@@ -33,6 +34,31 @@ button,
   box-shadow: var(--elevation-1);
   margin-top: var(--space-6);
   padding: var(--space-4);
+}
+
+.invitation form {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.invitation input,
+.invitation button,
+.invitation-token {
+  max-width: 100%;
+}
+
+.invitation input,
+.invitation button {
+  min-height: 44px;
+}
+
+.invitation-token {
+  overflow-wrap: anywhere;
+}
+
+.field-error {
+  color: var(--color-error);
+  margin: 0;
 }
 
 .members ul {
