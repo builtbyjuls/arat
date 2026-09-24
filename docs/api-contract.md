@@ -235,6 +235,25 @@ GET /api/v1/groups/{groupId}
 
 Only active members can read group details.
 
+### List the current actor's groups
+
+~~~http
+GET /api/v1/groups?cursor=...&limit=...
+~~~
+
+The current actor receives only groups where they have an `ACTIVE` membership.
+Each item contains the group ID, name, description, version, and that actor's
+scoped membership role. It contains no member list, inactive membership data,
+plan data, or foreign-actor filter. Nonmembers receive an empty page, not
+another actor's group data.
+
+The list orders by `(created_at DESC, group_id DESC)`. It defaults to 20 items,
+allows at most 100, and returns the standard `{items, nextCursor}` page. Its
+opaque, versioned Base64url cursor is bound to the current actor. A malformed,
+unsupported, or actor-mismatched cursor, or an out-of-range limit, returns `400
+INVALID_CURSOR`. Authorization is an active-membership predicate in the
+database query before cursor and limit predicates.
+
 ### Create and revoke invite links
 
 ~~~http
@@ -722,8 +741,9 @@ subscription commands use keys when that deferred extension exists.
 ## UI1 discovery additions (planned)
 
 The [Mobile Web Client Contract](web-client.md#required-discovery-reads-planned)
-defines the three reload-safe read gaps and the operator queue to implement
-before client screens. None is implemented at the M2 baseline:
+defines the reload-safe read gaps and the operator queue. `GET /api/v1/groups`
+is implemented; the remaining reads are planned before client screens depend on
+them:
 
 - `GET /api/v1/groups`: current actor's active groups and scoped role.
 - `GET /api/v1/providers`: active staff contexts, profile summary and staff role;
@@ -733,12 +753,13 @@ before client screens. None is implemented at the M2 baseline:
 - `GET /api/v1/operations/providers/pending-verifications`: operator-only exact
   current submissions with bounded provider summary and evidence references.
 
-Use bounded opaque cursor pages (default 20, maximum 100), stable creation or
-submission time plus ID ordering, and authorization before pagination as
-specified in the client contract. Existing private-resource errors and operator
-role failures remain authoritative. These reads change no M0-M2 transition,
-publication eligibility, or exact-submission decision fence. Executable OpenAPI
-and PostgreSQL evidence must accompany their later implementation.
+The planned reads use bounded opaque cursor pages (default 20, maximum 100),
+stable creation or submission time plus ID ordering, and authorization before
+pagination as specified in the client contract. Existing private-resource
+errors and operator role failures remain authoritative. These reads change no
+M0-M2 transition, publication eligibility, or exact-submission decision fence.
+Executable OpenAPI and PostgreSQL evidence must accompany their later
+implementation.
 
 Browser routing is separate from HTTP resource paths: `/plans/:planId` is the
 canonical private plan workspace, and `/invitations/accept` accepts a pasted

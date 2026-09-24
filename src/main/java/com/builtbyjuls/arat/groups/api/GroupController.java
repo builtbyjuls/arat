@@ -38,6 +38,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -69,6 +70,29 @@ public class GroupController {
         this.membershipExitService = membershipExitService;
         this.organizerTransferService = organizerTransferService;
         this.apiProblemFactory = apiProblemFactory;
+    }
+
+    @GetMapping
+    @Operation(operationId = "listGroups", summary = "List the current actor's private groups")
+    @SecurityRequirement(name = "bearerAuth")
+    @ApiResponses({
+        @ApiResponse(
+                responseCode = "200",
+                description = "Current actor's private group page",
+                content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = GroupPageRepresentation.class))),
+        @ApiResponse(
+                responseCode = "400",
+                description = "Invalid cursor or limit",
+                content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(
+                responseCode = "401",
+                description = "Authentication required",
+                content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class)))
+    })
+    public GroupPageRepresentation list(
+            @RequestParam(required = false) String cursor,
+            @RequestParam(required = false) Integer limit) {
+        return groupQueryService.listForActor(currentActor.requireAuthenticatedActor().accountId(), cursor, limit);
     }
 
     @GetMapping("/{groupId}")

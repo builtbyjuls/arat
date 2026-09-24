@@ -1,6 +1,7 @@
 package com.builtbyjuls.arat.groups.infrastructure;
 
 import com.builtbyjuls.arat.groups.domain.Group;
+import com.builtbyjuls.arat.groups.domain.GroupListing;
 import com.builtbyjuls.arat.groups.domain.GroupStatus;
 import com.builtbyjuls.arat.groups.domain.Membership;
 import com.builtbyjuls.arat.groups.domain.MembershipRole;
@@ -156,6 +157,50 @@ public class GroupRepository {
                 .param("accountId", accountId)
                 .query(this::mapGroup)
                 .optional();
+    }
+
+    @Transactional(readOnly = true)
+    public List<GroupListing> listActiveMembershipPage(UUID accountId, int limit) {
+        return jdbcClient.sql("""
+                        SELECT g.group_id, g.name, g.description, g.status, g.created_by_account_id,
+                               g.version, g.created_at, g.updated_at, m.role
+                        FROM group_membership m
+                        JOIN group_account g ON g.group_id = m.group_id
+                        WHERE m.account_id = :accountId
+                          AND m.status = 'ACTIVE'
+                        ORDER BY g.created_at DESC, g.group_id DESC
+                        LIMIT :limit
+                        """)
+                .param("accountId", accountId)
+                .param("limit", limit)
+                .query((resultSet, rowNum) -> new GroupListing(
+                        mapGroup(resultSet, rowNum),
+                        MembershipRole.valueOf(resultSet.getString("role"))))
+                .list();
+    }
+
+    @Transactional(readOnly = true)
+    public List<GroupListing> listActiveMembershipPage(
+            UUID accountId, OffsetDateTime createdAt, UUID groupId, int limit) {
+        return jdbcClient.sql("""
+                        SELECT g.group_id, g.name, g.description, g.status, g.created_by_account_id,
+                               g.version, g.created_at, g.updated_at, m.role
+                        FROM group_membership m
+                        JOIN group_account g ON g.group_id = m.group_id
+                        WHERE m.account_id = :accountId
+                          AND m.status = 'ACTIVE'
+                          AND (g.created_at, g.group_id) < (:createdAt, :groupId)
+                        ORDER BY g.created_at DESC, g.group_id DESC
+                        LIMIT :limit
+                        """)
+                .param("accountId", accountId)
+                .param("createdAt", createdAt)
+                .param("groupId", groupId)
+                .param("limit", limit)
+                .query((resultSet, rowNum) -> new GroupListing(
+                        mapGroup(resultSet, rowNum),
+                        MembershipRole.valueOf(resultSet.getString("role"))))
+                .list();
     }
 
     @Transactional(readOnly = true)
