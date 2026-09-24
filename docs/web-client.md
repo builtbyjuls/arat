@@ -1,6 +1,6 @@
 # Mobile Web Client Contract
 
-Status: UI1 decisions accepted; client and supporting discovery reads planned.
+Status: UI1 decisions accepted; client and supporting discovery reads are in progress.
 M0-M2 backend behavior is implemented. UI1 precedes M3 without renumbering it.
 This is a focused demonstration client, not a production-ready identity or
 frontend platform, and it is a responsive web application, not a native app.
@@ -175,14 +175,14 @@ provider staff or private group membership.
 
 ## Required discovery reads (planned)
 
-These three reload-safe gaps and the operator queue must be implemented before
-screens depend on them. They do not exist at the M2 baseline. They belong to
+The remaining two reload-safe gaps and the operator queue must be implemented
+before screens depend on them. They do not exist at the M2 baseline. They belong to
 the existing owning modules and must not query foreign module tables directly.
 
 | Read | Required projection and privacy |
 | --- | --- |
-| `GET /api/v1/groups` | Compact groups and caller's scoped role for ACTIVE membership only; no public search, inactive history, plan data, or foreign actor filter |
-| `GET /api/v1/providers` | Provider ID, display name, verification status, version, caller staff role, categories and service areas for active staff only; also add `callerStaffRole` to staff-private provider detail for direct reloads |
+| `GET /api/v1/groups` | Implemented: compact groups and caller's scoped role for ACTIVE membership only; no public search, inactive history, plan data, or foreign actor filter |
+| `GET /api/v1/providers` | Implemented: provider ID, display name, verification status, version, caller staff role, categories and service areas for active staff only; staff-private provider detail also exposes `callerStaffRole` for direct reloads |
 | `GET /api/v1/plans/{planId}/requirement-finalizations` | Existing immutable finalization representation, basis version and enough status to distinguish current-basis candidates from history; active group members only, same private 404 as plan reads |
 | `GET /api/v1/operations/providers/pending-verifications` | PLATFORM_OPERATOR only; exact current submission ID, provider ID/version, bounded safe provider summary, submission time and ordered evidence references; exclude superseded/decided submissions |
 

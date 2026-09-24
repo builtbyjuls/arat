@@ -49,6 +49,12 @@ class ProviderProfileProblemAdvice {
         }
     }
 
+    @ExceptionHandler(ProviderIndexException.class)
+    void invalidCursor(HttpServletRequest request, HttpServletResponse response) throws IOException {
+        write(request, response, HttpStatus.BAD_REQUEST,
+                "INVALID_CURSOR", "Invalid cursor", "The cursor is invalid.");
+    }
+
     @ExceptionHandler(ProviderVerificationException.class)
     void verificationFailure(
             ProviderVerificationException exception,

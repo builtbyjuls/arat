@@ -1,6 +1,10 @@
 package com.builtbyjuls.arat.providers.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.spy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -14,10 +18,17 @@ import com.builtbyjuls.arat.identity.api.AuthenticatedActor;
 import com.builtbyjuls.arat.providers.api.ProviderProfileException;
 import com.builtbyjuls.arat.providers.api.ReplaceProviderProfileCommand;
 import com.builtbyjuls.arat.providers.domain.ProviderCategory;
+import com.builtbyjuls.arat.providers.infrastructure.ProviderRepository;
 import com.builtbyjuls.arat.testing.ConcurrentDatabaseWorkers;
 import com.builtbyjuls.arat.web.CorrelationIdFilter;
+import java.nio.charset.StandardCharsets;
+import java.time.OffsetDateTime;
+import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,7 +42,10 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.context.WebApplicationContext;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -40,6 +54,7 @@ class ProviderProfileIT extends PostgreSqlIntegrationTest {
 
     private static final UUID PROVIDER_ID = UUID.fromString("70000000-0000-4000-8000-000000000011");
     private static final UUID OTHER_PROVIDER_ID = UUID.fromString("70000000-0000-4000-8000-000000000012");
+    private static final UUID THIRD_PROVIDER_ID = UUID.fromString("70000000-0000-4000-8000-000000000013");
     private static final UUID ADMIN_ID = UUID.fromString("80000000-0000-4000-8000-000000000011");
     private static final UUID STAFF_ID = UUID.fromString("80000000-0000-4000-8000-000000000012");
     private static final UUID OTHER_ADMIN_ID = UUID.fromString("80000000-0000-4000-8000-000000000013");
@@ -64,10 +79,15 @@ class ProviderProfileIT extends PostgreSqlIntegrationTest {
     @Autowired
     private DataSource dataSource;
 
+    @Autowired
+    private ObjectMapper objectMapper;
+
     private MockMvc mockMvc;
+    private TransactionTemplate transactionTemplate;
 
     @BeforeEach
     void prepareDatabase() {
+        transactionTemplate = new TransactionTemplate(transactionManager);
         jdbcClient.sql("DELETE FROM audit_event").update();
         jdbcClient.sql("DELETE FROM provider_service_area").update();
         jdbcClient.sql("DELETE FROM provider_supported_category").update();
@@ -111,9 +131,12 @@ class ProviderProfileIT extends PostgreSqlIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(header().string("ETag", "\"1\""))
                 .andExpect(jsonPath("$.providerId").value(PROVIDER_ID.toString()))
+                .andExpect(jsonPath("$.callerStaffRole").value("ADMIN"))
                 .andExpect(jsonPath("$.supportedCategories[0]").value("COURT"))
                 .andExpect(jsonPath("$.serviceAreaCodes[0]").value("BGC"));
-        readAs(STAFF_ID, PROVIDER_ID).andExpect(status().isOk());
+        readAs(STAFF_ID, PROVIDER_ID)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.callerStaffRole").value("STAFF"));
 
         readAs(OTHER_ADMIN_ID, PROVIDER_ID)
                 .andExpect(status().isNotFound())
@@ -287,10 +310,193 @@ class ProviderProfileIT extends PostgreSqlIntegrationTest {
                 .andExpect(jsonPath("$.paths['/api/v1/providers/{providerId}/profile'].put.responses['428']").exists());
     }
 
+    @Test
+    void listsOnlyActiveStaffContextsWithStablePagingAndScopedRoles() throws Exception {
+        insertProvider(THIRD_PROVIDER_ID, "Third provider");
+        insertMembership(THIRD_PROVIDER_ID, ADMIN_ID, "ADMIN", "ACTIVE");
+        insertCategory(THIRD_PROVIDER_ID, "GROUP_DINING");
+        insertArea(THIRD_PROVIDER_ID, "Quezon City");
+        setCreatedAt(PROVIDER_ID, "2026-09-20T01:00:00Z");
+        setCreatedAt(OTHER_PROVIDER_ID, "2026-09-20T01:00:00Z");
+        setCreatedAt(THIRD_PROVIDER_ID, "2026-09-20T00:00:00Z");
+
+        var first = page(ADMIN_ID, null, 1);
+        assertThat(first.at("/items/0/providerId").asString()).isEqualTo(OTHER_PROVIDER_ID.toString());
+        assertThat(first.at("/items/0/callerStaffRole").asString()).isEqualTo("STAFF");
+        assertThat(first.at("/items/0/supportedCategories/0").asString()).isEqualTo("KTV");
+        assertThat(first.at("/items/0/serviceAreaCodes/0").asString()).isEqualTo("Makati");
+        assertThat(first.at("/items/0/eligibilityVersion").isMissingNode()).isTrue();
+        assertThat(first.at("/items/0/createdAt").isMissingNode()).isTrue();
+
+        jdbcClient.sql("UPDATE provider_organization SET display_name = 'Updated provider', version = version + 1 WHERE provider_id = :providerId")
+                .param("providerId", OTHER_PROVIDER_ID)
+                .update();
+        var second = page(ADMIN_ID, first.at("/nextCursor").asString(), 1);
+        assertThat(second.at("/items/0/providerId").asString()).isEqualTo(PROVIDER_ID.toString());
+        assertThat(second.at("/items/0/callerStaffRole").asString()).isEqualTo("ADMIN");
+        var third = page(ADMIN_ID, second.at("/nextCursor").asString(), 1);
+        assertThat(third.at("/items/0/providerId").asString()).isEqualTo(THIRD_PROVIDER_ID.toString());
+        assertThat(third.at("/nextCursor").isNull()).isTrue();
+
+        assertThat(page(STAFF_ID, null, null).at("/items/0/providerId").asString()).isEqualTo(PROVIDER_ID.toString());
+        assertThat(page(OTHER_ADMIN_ID, null, null).at("/items/0/providerId").asString()).isEqualTo(OTHER_PROVIDER_ID.toString());
+        assertThat(page(OUTSIDER_ID, null, null).at("/items").isEmpty()).isTrue();
+
+        jdbcClient.sql("UPDATE provider_staff_membership SET status = 'REMOVED', removed_at = statement_timestamp() WHERE provider_id = :providerId AND account_id = :accountId")
+                .param("providerId", PROVIDER_ID)
+                .param("accountId", STAFF_ID)
+                .update();
+        assertThat(page(STAFF_ID, null, null).at("/items").isEmpty()).isTrue();
+    }
+
+    @Test
+    void rejectsInvalidProviderIndexCursorsAndLimitsAndUsesTheActorListingIndex() throws Exception {
+        for (var suffix = 21; suffix <= 121; suffix++) {
+            var providerId = UUID.fromString("70000000-0000-4000-8000-" + String.format("%012d", suffix));
+            insertProvider(providerId, "Provider " + suffix);
+            insertMembership(providerId, ADMIN_ID, "STAFF", "ACTIVE");
+            insertCategory(providerId, "COURT");
+            insertArea(providerId, "BGC");
+        }
+
+        var defaultPage = page(ADMIN_ID, null, null);
+        assertThat(defaultPage.at("/items").size()).isEqualTo(20);
+        assertThat(defaultPage.at("/nextCursor").isTextual()).isTrue();
+        assertThat(page(ADMIN_ID, null, 100).at("/items").size()).isEqualTo(100);
+
+        for (var query : new String[] {
+                "?limit=0",
+                "?limit=101",
+                "?cursor=bad=cursor",
+                "?cursor=" + encoded("null"),
+                "?cursor=" + encoded("{\"version\":1,\"actorId\":\"" + ADMIN_ID + "\",\"createdAt\":\"not-a-timestamp\",\"providerId\":\"" + UUID.randomUUID() + "\"}"),
+                "?cursor=" + encoded("{\"version\":2,\"actorId\":\"" + ADMIN_ID + "\",\"createdAt\":\"2026-09-20T00:00:00Z\",\"providerId\":\"" + UUID.randomUUID() + "\"}")}) {
+            mockMvc.perform(get("/api/v1/providers" + query)
+                            .with(authentication(authenticationFor(ADMIN_ID)))
+                            .header(CorrelationIdFilter.HEADER_NAME, CORRELATION_ID))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("INVALID_CURSOR"));
+        }
+        mockMvc.perform(get("/api/v1/providers")
+                        .param("cursor", defaultPage.at("/nextCursor").asString())
+                        .with(authentication(authenticationFor(STAFF_ID)))
+                        .header(CorrelationIdFilter.HEADER_NAME, CORRELATION_ID))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_CURSOR"));
+
+        List<String> plan = transactionTemplate.execute(status -> {
+            jdbcClient.sql("SET LOCAL enable_seqscan = off").update();
+            return jdbcClient.sql("""
+                            EXPLAIN (COSTS OFF)
+                            SELECT organization.provider_id, organization.display_name, organization.status,
+                                   organization.verification_status, organization.version,
+                                   organization.eligibility_version, organization.created_at,
+                                   organization.updated_at, membership.role,
+                                   ARRAY(
+                                       SELECT category
+                                       FROM provider_supported_category
+                                       WHERE provider_id = organization.provider_id
+                                       ORDER BY category
+                                   ) AS supported_categories,
+                                   ARRAY(
+                                       SELECT area_code
+                                       FROM provider_service_area
+                                       WHERE provider_id = organization.provider_id
+                                       ORDER BY area_code
+                                   ) AS service_area_codes
+                            FROM provider_staff_membership membership
+                            JOIN provider_organization organization ON organization.provider_id = membership.provider_id
+                            WHERE membership.account_id = :accountId
+                              AND membership.status = 'ACTIVE'
+                            ORDER BY organization.created_at DESC, organization.provider_id DESC
+                            LIMIT 2
+                            """)
+                    .param("accountId", ADMIN_ID)
+                    .query(String.class)
+                    .list();
+        });
+        assertThat(plan).anyMatch(line -> line.contains("provider_staff_membership_active_actor_listing_idx"));
+    }
+
+    @Test
+    void readsEachProviderPageFromOneProfileSnapshotDuringAConcurrentReplacement() throws Exception {
+        setCreatedAt(PROVIDER_ID, "2026-09-21T01:00:00Z");
+        setCreatedAt(OTHER_PROVIDER_ID, "2026-09-20T01:00:00Z");
+        var queryReturned = new CountDownLatch(1);
+        var resumeMapping = new CountDownLatch(1);
+        var repository = spy(new ProviderRepository(jdbcClient));
+        doAnswer(invocation -> {
+            var page = invocation.callRealMethod();
+            queryReturned.countDown();
+            assertThat(resumeMapping.await(5, TimeUnit.SECONDS)).isTrue();
+            return page;
+        }).when(repository).listActiveStaffMembershipPage(any(UUID.class), eq(2));
+        var service = new ProviderProfileService(repository, null, objectMapper);
+        var executor = Executors.newSingleThreadExecutor();
+        try {
+            var page = executor.submit(() -> service.listForActor(ADMIN_ID, null, 1));
+            assertThat(queryReturned.await(5, TimeUnit.SECONDS)).isTrue();
+
+            transactionTemplate.executeWithoutResult(status -> {
+                jdbcClient.sql("UPDATE provider_organization SET display_name = 'New profile', version = 2 WHERE provider_id = :providerId")
+                        .param("providerId", PROVIDER_ID)
+                        .update();
+                jdbcClient.sql("DELETE FROM provider_supported_category WHERE provider_id = :providerId")
+                        .param("providerId", PROVIDER_ID)
+                        .update();
+                jdbcClient.sql("DELETE FROM provider_service_area WHERE provider_id = :providerId")
+                        .param("providerId", PROVIDER_ID)
+                        .update();
+                insertCategory(PROVIDER_ID, "GROUP_DINING");
+                insertArea(PROVIDER_ID, "Quezon City");
+            });
+            resumeMapping.countDown();
+
+            var item = page.get(5, TimeUnit.SECONDS).items().getFirst();
+            assertThat(item.displayName()).isEqualTo("Original courts");
+            assertThat(item.version()).isOne();
+            assertThat(item.supportedCategories()).containsExactly(ProviderCategory.COURT);
+            assertThat(item.serviceAreaCodes()).containsExactly("BGC");
+        } finally {
+            resumeMapping.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void publishesTheProviderIndexAndRoleAwareDetailInOpenApi() throws Exception {
+        mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paths['/api/v1/providers'].get.operationId").value("listProviders"))
+                .andExpect(jsonPath("$.paths['/api/v1/providers'].get.responses['200'].content['application/json'].schema.$ref")
+                        .value("#/components/schemas/ProviderPageRepresentation"))
+                .andExpect(jsonPath("$.paths['/api/v1/providers'].get.responses['400'].content['application/problem+json'].schema.$ref")
+                        .value("#/components/schemas/ApiProblemResponse"))
+                .andExpect(jsonPath("$.components.schemas.ProviderSummaryRepresentation.properties.callerStaffRole.type").value("string"))
+                .andExpect(jsonPath("$.components.schemas.ProviderDetailRepresentation.properties.callerStaffRole.type").value("string"));
+    }
+
     private org.springframework.test.web.servlet.ResultActions readAs(UUID actorId, UUID providerId) throws Exception {
         return mockMvc.perform(get("/api/v1/providers/{providerId}", providerId)
                 .with(authentication(authenticationFor(actorId)))
                 .header(CorrelationIdFilter.HEADER_NAME, CORRELATION_ID));
+    }
+
+    private JsonNode page(UUID actorId, String cursor, Integer limit) throws Exception {
+        var request = get("/api/v1/providers");
+        if (cursor != null) {
+            request.param("cursor", cursor);
+        }
+        if (limit != null) {
+            request.param("limit", limit.toString());
+        }
+        return objectMapper.readTree(mockMvc.perform(request
+                        .with(authentication(authenticationFor(actorId)))
+                        .header(CorrelationIdFilter.HEADER_NAME, CORRELATION_ID))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
     }
 
     private org.springframework.test.web.servlet.ResultActions replaceAs(UUID actorId, UUID providerId, String ifMatch, String body) throws Exception {
@@ -328,6 +534,13 @@ class ProviderProfileIT extends PostgreSqlIntegrationTest {
         jdbcClient.sql("INSERT INTO provider_organization (provider_id, display_name) VALUES (:providerId, :displayName)")
                 .param("providerId", providerId)
                 .param("displayName", displayName)
+                .update();
+    }
+
+    private void setCreatedAt(UUID providerId, String createdAt) {
+        jdbcClient.sql("UPDATE provider_organization SET created_at = :createdAt, updated_at = :createdAt WHERE provider_id = :providerId")
+                .param("providerId", providerId)
+                .param("createdAt", OffsetDateTime.parse(createdAt))
                 .update();
     }
 
@@ -403,5 +616,9 @@ class ProviderProfileIT extends PostgreSqlIntegrationTest {
         return jdbcClient.sql("SELECT metadata::TEXT FROM audit_event WHERE action = 'provider.profile.replaced'")
                 .query(String.class)
                 .single();
+    }
+
+    private String encoded(String value) {
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(value.getBytes(StandardCharsets.UTF_8));
     }
 }

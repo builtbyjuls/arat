@@ -373,7 +373,7 @@ class MilestoneTwoJourneyIT extends PostgreSqlIntegrationTest {
 
         assertSuccessSchemas(root, List.of(
                 new OpenApiResponse("/api/v1/providers", "post", "201", "ProviderRepresentation"),
-                new OpenApiResponse("/api/v1/providers/{providerId}", "get", "200", "ProviderRepresentation"),
+                new OpenApiResponse("/api/v1/providers/{providerId}", "get", "200", "ProviderDetailRepresentation"),
                 new OpenApiResponse("/api/v1/providers/{providerId}/profile", "put", "200", "ProviderRepresentation"),
                 new OpenApiResponse("/api/v1/providers/{providerId}/verification-submissions", "post", "200", "ProviderVerificationSubmissionRepresentation"),
                 new OpenApiResponse("/api/v1/operations/providers/{providerId}/verification-decisions", "post", "200", "ProviderVerificationDecisionRepresentation"),

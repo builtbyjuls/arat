@@ -469,8 +469,9 @@ arbitrary category-attribute keys in the generic idempotency component.
 ### Provider identity and profile
 
 Provider creation is implemented with PostgreSQL endpoint evidence in
-`ProviderCreationIT`. Provider reads and profile replacement are implemented
-with PostgreSQL endpoint evidence in `ProviderProfileIT`.
+`ProviderCreationIT`. Provider reads, the active-staff workspace index, and
+profile replacement are implemented with PostgreSQL endpoint evidence in
+`ProviderProfileIT`.
 
 ~~~http
 POST /api/v1/providers
@@ -492,13 +493,26 @@ and 1-120 characters. Categories are a unique set of 1-10 M1 values (`COURT`,
 are a unique set of 1-20 trimmed strings of 1-64 characters.
 
 ~~~http
+GET /api/v1/providers?cursor=...&limit=...
 GET /api/v1/providers/{providerId}
 PUT /api/v1/providers/{providerId}/profile
 If-Match: "provider-version"
 ~~~
 
-Active `ADMIN` or `STAFF` members may read their provider. `ADMIN` replaces the
-profile using the create body shape; category and area collections are full
+The current actor's provider index includes only their `ACTIVE` staff
+memberships. Each item contains provider ID, display name, verification status,
+version, the caller's scoped staff role, supported categories, and service
+areas. It excludes inactive membership history and other actors' contexts.
+Rows order by `(created_at DESC, provider_id DESC)`, default to 20, allow at
+most 100, and return `{items, nextCursor}`. The opaque versioned Base64url
+cursor is bound to the current actor. A malformed, unsupported, or
+actor-mismatched cursor, or an out-of-range limit, returns `400 INVALID_CURSOR`.
+The active-staff predicate applies in the database query before cursor and
+limit predicates.
+
+Active `ADMIN` or `STAFF` members may read their provider. The staff-private
+detail includes the caller's scoped role as `callerStaffRole`. `ADMIN` replaces
+the profile using the create body shape; category and area collections are full
 replacements. The provider version advances, but eligibility version does not.
 Edits affect future matching and never rewrite an existing recipient grant.
 Provider context is always explicit in the route. A global platform role never
@@ -742,12 +756,9 @@ subscription commands use keys when that deferred extension exists.
 
 The [Mobile Web Client Contract](web-client.md#required-discovery-reads-planned)
 defines the reload-safe read gaps and the operator queue. `GET /api/v1/groups`
-is implemented; the remaining reads are planned before client screens depend on
-them:
+and `GET /api/v1/providers` are implemented; the remaining reads are planned
+before client screens depend on them:
 
-- `GET /api/v1/groups`: current actor's active groups and scoped role.
-- `GET /api/v1/providers`: active staff contexts, profile summary and staff role;
-  add `callerStaffRole` to staff-private provider detail for direct reloads.
 - `GET /api/v1/plans/{planId}/requirement-finalizations`: immutable history and
   basis status for active group members, without private preference bodies.
 - `GET /api/v1/operations/providers/pending-verifications`: operator-only exact

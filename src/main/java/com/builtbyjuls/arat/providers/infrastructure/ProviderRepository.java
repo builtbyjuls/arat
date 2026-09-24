@@ -13,9 +13,11 @@ import com.builtbyjuls.arat.providers.domain.ProviderVerificationDecision;
 import com.builtbyjuls.arat.providers.domain.ProviderVerificationDecisionRecord;
 import com.builtbyjuls.arat.providers.domain.ProviderVerificationStatus;
 import com.builtbyjuls.arat.providers.domain.ProviderVerificationSubmission;
+import com.builtbyjuls.arat.providers.domain.ProviderWorkspace;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -89,6 +91,86 @@ public class ProviderRepository {
                 .param("accountId", accountId)
                 .query(this::mapStaffMembership)
                 .optional();
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProviderWorkspace> listActiveStaffMembershipPage(UUID accountId, int limit) {
+        return jdbcClient.sql("""
+                        SELECT organization.provider_id, organization.display_name, organization.status,
+                               organization.verification_status, organization.version,
+                               organization.eligibility_version, organization.created_at,
+                               organization.updated_at, membership.role,
+                               ARRAY(
+                                   SELECT category
+                                   FROM provider_supported_category
+                                   WHERE provider_id = organization.provider_id
+                                   ORDER BY category
+                               ) AS supported_categories,
+                               ARRAY(
+                                   SELECT area_code
+                                   FROM provider_service_area
+                                   WHERE provider_id = organization.provider_id
+                                   ORDER BY area_code
+                               ) AS service_area_codes
+                        FROM provider_staff_membership membership
+                        JOIN provider_organization organization ON organization.provider_id = membership.provider_id
+                        WHERE membership.account_id = :accountId
+                          AND membership.status = 'ACTIVE'
+                        ORDER BY organization.created_at DESC, organization.provider_id DESC
+                        LIMIT :limit
+                        """)
+                .param("accountId", accountId)
+                .param("limit", limit)
+                .query((resultSet, rowNum) -> new ProviderWorkspace(
+                        mapOrganization(resultSet, rowNum),
+                        ProviderStaffRole.valueOf(resultSet.getString("role")),
+                        textArray(resultSet, "supported_categories").stream()
+                                .map(ProviderCategory::valueOf)
+                                .toList(),
+                        textArray(resultSet, "service_area_codes")))
+                .list();
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProviderWorkspace> listActiveStaffMembershipPage(
+            UUID accountId, OffsetDateTime createdAt, UUID providerId, int limit) {
+        return jdbcClient.sql("""
+                        SELECT organization.provider_id, organization.display_name, organization.status,
+                               organization.verification_status, organization.version,
+                               organization.eligibility_version, organization.created_at,
+                               organization.updated_at, membership.role,
+                               ARRAY(
+                                   SELECT category
+                                   FROM provider_supported_category
+                                   WHERE provider_id = organization.provider_id
+                                   ORDER BY category
+                               ) AS supported_categories,
+                               ARRAY(
+                                   SELECT area_code
+                                   FROM provider_service_area
+                                   WHERE provider_id = organization.provider_id
+                                   ORDER BY area_code
+                               ) AS service_area_codes
+                        FROM provider_staff_membership membership
+                        JOIN provider_organization organization ON organization.provider_id = membership.provider_id
+                        WHERE membership.account_id = :accountId
+                          AND membership.status = 'ACTIVE'
+                          AND (organization.created_at, organization.provider_id) < (:createdAt, :providerId)
+                        ORDER BY organization.created_at DESC, organization.provider_id DESC
+                        LIMIT :limit
+                        """)
+                .param("accountId", accountId)
+                .param("createdAt", createdAt)
+                .param("providerId", providerId)
+                .param("limit", limit)
+                .query((resultSet, rowNum) -> new ProviderWorkspace(
+                        mapOrganization(resultSet, rowNum),
+                        ProviderStaffRole.valueOf(resultSet.getString("role")),
+                        textArray(resultSet, "supported_categories").stream()
+                                .map(ProviderCategory::valueOf)
+                                .toList(),
+                        textArray(resultSet, "service_area_codes")))
+                .list();
     }
 
     @Transactional(readOnly = true)
@@ -416,6 +498,15 @@ public class ProviderRepository {
                 ProviderStaffStatus.valueOf(resultSet.getString("status")),
                 resultSet.getObject("joined_at", OffsetDateTime.class),
                 resultSet.getObject("removed_at", OffsetDateTime.class));
+    }
+
+    private List<String> textArray(ResultSet resultSet, String column) throws SQLException {
+        var array = resultSet.getArray(column);
+        try {
+            return Arrays.stream((Object[]) array.getArray()).map(String.class::cast).toList();
+        } finally {
+            array.free();
+        }
     }
 
     private void validateChildren(

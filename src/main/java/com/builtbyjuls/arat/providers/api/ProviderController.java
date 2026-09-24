@@ -37,6 +37,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -95,15 +96,39 @@ public class ProviderController {
                 .body(provider);
     }
 
+    @GetMapping
+    @Operation(operationId = "listProviders", summary = "List the current actor's provider workspaces")
+    @SecurityRequirement(name = "bearerAuth")
+    @ApiResponses({
+        @ApiResponse(
+                responseCode = "200",
+                description = "Current actor's active provider staff page",
+                content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ProviderPageRepresentation.class))),
+        @ApiResponse(
+                responseCode = "400",
+                description = "Invalid cursor or limit",
+                content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(
+                responseCode = "401",
+                description = "Authentication required",
+                content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class)))
+    })
+    public ProviderPageRepresentation list(
+            @RequestParam(required = false) String cursor,
+            @RequestParam(required = false) Integer limit) {
+        return providerProfileService.listForActor(
+                currentActor.requireAuthenticatedActor().accountId(), cursor, limit);
+    }
+
     @GetMapping("/{providerId}")
     @Operation(operationId = "readProvider", summary = "Read a provider organization")
     @SecurityRequirement(name = "bearerAuth")
     @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "Provider organization", headers = @Header(name = "ETag", description = "Current provider version"), content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ProviderRepresentation.class))),
+        @ApiResponse(responseCode = "200", description = "Provider organization", headers = @Header(name = "ETag", description = "Current provider version"), content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ProviderDetailRepresentation.class))),
         @ApiResponse(responseCode = "401", description = "Authentication required", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
         @ApiResponse(responseCode = "404", description = "Private resource not found", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class)))
     })
-    public ResponseEntity<ProviderRepresentation> read(@PathVariable UUID providerId) {
+    public ResponseEntity<ProviderDetailRepresentation> read(@PathVariable UUID providerId) {
         var actor = currentActor.requireAuthenticatedActor();
         var provider = providerProfileService.read(providerId, actor.accountId());
         return ResponseEntity.ok().eTag(ProviderCreationService.etag(provider.version())).body(provider);
