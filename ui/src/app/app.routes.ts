@@ -54,8 +54,10 @@ export const routes: Routes = [
   },
   {
     path: 'providers',
-    ...privateRoute,
-    data: { requiresIdentity: true, title: 'Providers', summary: 'Your provider workspaces will appear here.' },
+    canActivate: [localActorRouteGuard],
+    loadComponent: () => import('./providers/provider-index.component')
+      .then((component) => component.ProviderIndexComponent),
+    data: { requiresIdentity: true },
   },
   {
     path: 'providers/:providerId/requests',

@@ -1,0 +1,61 @@
+<section aria-labelledby="providers-heading">
+  <div class="heading-row">
+    <div>
+      <h1 id="providers-heading" data-route-heading tabindex="-1">Your provider workspaces</h1>
+      <p>Provider organizations where you are active staff.</p>
+    </div>
+    <button type="button" (click)="refresh()" [disabled]="providerIndex.state() === 'loading' || providerIndex.state() === 'loading-more' || providerIndex.state() === 'refreshing'">
+      Refresh
+    </button>
+  </div>
+
+  @if (providerIndex.state() === 'loading') {
+    <p class="status" role="status">Loading your provider workspaces...</p>
+  } @else if (providerIndex.state() === 'error' && providerIndex.providers().length === 0) {
+    <section class="state" aria-live="assertive" role="alert">
+      <h2>Provider workspaces are unavailable</h2>
+      <p>Try refreshing. If the problem continues, use the correlation ID when contacting support.</p>
+      @if (providerIndex.correlationId()) {
+        <p>Correlation ID: {{ providerIndex.correlationId() }}</p>
+      }
+    </section>
+  } @else if (providerIndex.state() === 'empty') {
+    <section class="state" aria-live="polite" role="status">
+      <h2>No provider workspaces yet</h2>
+      <p>Provider organizations where you become active staff will appear here.</p>
+    </section>
+  } @else {
+    @if (providerIndex.state() === 'error') {
+      <section class="state" aria-live="assertive" role="alert">
+        <h2>Provider workspaces could not be refreshed</h2>
+        <p>Your previously loaded workspaces are still shown. Try refreshing again.</p>
+        @if (providerIndex.correlationId()) {
+          <p>Correlation ID: {{ providerIndex.correlationId() }}</p>
+        }
+      </section>
+    }
+    <ul class="provider-list">
+      @for (provider of providerIndex.providers(); track provider.providerId) {
+        <li>
+          <a class="provider-card" [routerLink]="['/providers', provider.providerId]">
+            <span class="provider-name">{{ provider.displayName }}</span>
+            <span class="role-label">{{ roleLabel(provider.callerStaffRole) }}</span>
+            <span class="status-label">{{ provider.verificationStatus }}</span>
+            <span class="provider-summary">{{ provider.supportedCategories?.join(', ') }} - {{ provider.serviceAreaCodes?.join(', ') }}</span>
+          </a>
+        </li>
+      }
+    </ul>
+    @if (providerIndex.state() === 'loading-more') {
+      <p class="status" role="status">Loading more provider workspaces...</p>
+    }
+    @if (providerIndex.state() === 'refreshing') {
+      <p class="status" role="status">Refreshing your provider workspaces...</p>
+    }
+    @if (providerIndex.nextCursor() !== null) {
+      <button type="button" class="load-more" (click)="loadMore()" [disabled]="providerIndex.state() === 'loading-more'">
+        Load more provider workspaces
+      </button>
+    }
+  }
+</section>
