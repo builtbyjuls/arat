@@ -1,0 +1,82 @@
+<section aria-labelledby="provider-requests-heading">
+  <div class="heading-row">
+    <div>
+      <h1 id="provider-requests-heading" data-route-heading tabindex="-1">Provider requests</h1>
+      <p>Only requests the server currently authorizes for this provider are shown.</p>
+    </div>
+    <button type="button" (click)="refresh()" [disabled]="feed.state() === 'loading' || feed.state() === 'loading-more' || feed.state() === 'refreshing'">Refresh requests</button>
+  </div>
+
+  @if (feed.state() === 'loading') {
+    <p class="status" role="status">Loading provider requests...</p>
+  } @else if (feed.state() === 'error' && feed.items().length === 0) {
+    <section class="state" aria-live="assertive" role="alert">
+      <h2>Provider requests are unavailable</h2>
+      <p>This provider context or its request access is unavailable. A suspension or eligibility change invalidates old access, and restoration does not restore an old request grant.</p>
+      @if (feed.correlationId()) { <p>Correlation ID: {{ feed.correlationId() }}</p> }
+      <a routerLink="/providers">Return to your provider workspaces</a>
+    </section>
+  } @else if (feed.state() === 'empty') {
+    <section class="state" aria-live="polite" role="status">
+      <h2>No provider requests yet</h2>
+      <p>Eligible provider-safe requests will appear here when the server grants access.</p>
+    </section>
+  } @else {
+    @if (feed.state() === 'error') {
+      <section class="state" aria-live="assertive" role="alert">
+        <h2>Provider requests could not be refreshed</h2>
+        <p>Previously loaded requests are still shown. Refresh before relying on their actionability.</p>
+        @if (feed.correlationId()) { <p>Correlation ID: {{ feed.correlationId() }}</p> }
+      </section>
+    }
+    <ul class="request-list">
+      @for (request of feed.items(); track request.requestId) {
+        <li>
+          <a class="request-card" [routerLink]="[]" [queryParams]="{requestId: request.requestId}">
+            <span class="request-state">{{ stateLabel(request.state) }}</span>
+            <span class="request-category">{{ request.category ?? 'Unspecified activity' }}</span>
+            <span>Deadline: {{ formatDate(request.offerDeadline, request.timeZone) }} ({{ request.timeZone ?? 'time zone unavailable' }})</span>
+            <span>Headcount: {{ request.headcount?.minimum ?? 'Unavailable' }} to {{ request.headcount?.maximum ?? 'Unavailable' }}</span>
+            <span>Budget: {{ request.budget?.minimumAmount ?? 'Unavailable' }} to {{ request.budget?.maximumAmount ?? 'Unavailable' }} {{ request.budget?.currency ?? '' }}</span>
+            <span>{{ actionabilityGuidance(request, actionabilityNow()) }}</span>
+          </a>
+        </li>
+      }
+    </ul>
+    @if (feed.state() === 'loading-more') { <p class="status" role="status">Loading more provider requests...</p> }
+    @if (feed.state() === 'refreshing') { <p class="status" role="status">Refreshing provider requests...</p> }
+    @if (feed.nextCursor() !== null) { <button type="button" class="load-more" (click)="loadMore()" [disabled]="feed.state() === 'loading-more'">Load more provider requests</button> }
+  }
+
+  @if (feed.detailState() === 'loading') {
+    <section class="detail-card" aria-live="polite" role="status"><h2>Loading request details...</h2></section>
+  } @else if (feed.detailState() === 'error') {
+    <section class="detail-card" aria-live="assertive" role="alert">
+      <h2>Request details are unavailable</h2>
+      <p>This request is unavailable in this provider context.</p>
+      @if (feed.detailCorrelationId()) { <p>Correlation ID: {{ feed.detailCorrelationId() }}</p> }
+    </section>
+  } @else if (feed.detail(); as request) {
+    <section class="detail-card" aria-labelledby="provider-request-detail-heading">
+      <h2 id="provider-request-detail-heading">Provider request details</h2>
+      <p class="request-state">{{ stateLabel(request.state) }}</p>
+      <p>{{ actionabilityGuidance(request, actionabilityNow()) }}</p>
+      <dl>
+        <div><dt>Activity</dt><dd>{{ request.category ?? 'Unavailable' }}</dd></div>
+        <div><dt>Area</dt><dd>{{ request.area?.code ?? 'Unavailable' }}{{ request.area?.radiusKm ? ' within ' + request.area?.radiusKm + ' km' : '' }}</dd></div>
+        <div><dt>Requested time</dt><dd>{{ formatDate(request.requestedWindow?.startAt, request.timeZone) }} to {{ formatDate(request.requestedWindow?.endAt, request.timeZone) }} ({{ request.timeZone ?? 'time zone unavailable' }})</dd></div>
+        <div><dt>Deadline</dt><dd>{{ formatDate(request.offerDeadline, request.timeZone) }} ({{ request.timeZone ?? 'time zone unavailable' }})</dd></div>
+        <div><dt>Headcount</dt><dd>{{ request.headcount?.minimum ?? 'Unavailable' }} to {{ request.headcount?.maximum ?? 'Unavailable' }}</dd></div>
+        <div><dt>Budget</dt><dd>{{ request.budget?.minimumAmount ?? 'Unavailable' }} to {{ request.budget?.maximumAmount ?? 'Unavailable' }} {{ request.budget?.currency ?? '' }}</dd></div>
+        <div><dt>Requirements</dt><dd>{{ request.mustHaves?.join(', ') || 'None specified' }}</dd></div>
+        @if (request.providerSafeNotes) { <div><dt>Provider-safe notes</dt><dd>{{ request.providerSafeNotes }}</dd></div> }
+      </dl>
+      @if (request.categoryAttributes | keyvalue; as attributes) {
+        @if (attributes.length > 0) {
+          <h3>Category details</h3>
+          <dl>@for (attribute of attributes; track attribute.key) { <div><dt>{{ attribute.key }}</dt><dd>{{ attribute.value }}</dd></div> }</dl>
+        }
+      }
+    </section>
+  }
+</section>

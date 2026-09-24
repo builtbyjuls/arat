@@ -61,8 +61,10 @@ export const routes: Routes = [
   },
   {
     path: 'providers/:providerId/requests',
-    ...privateRoute,
-    data: { requiresIdentity: true, title: 'Provider requests', summary: 'Eligible provider requests will appear here.' },
+    canActivate: [localActorRouteGuard],
+    loadComponent: () => import('./providers/provider-request-feed.component')
+      .then((component) => component.ProviderRequestFeedComponent),
+    data: { requiresIdentity: true },
   },
   {
     path: 'providers/:providerId',

@@ -54,6 +54,22 @@ describe('ProviderApi', () => {
     });
   });
 
+  it('uses only provider-safe request feed and detail routes', () => {
+    const read = vi.fn((_path: string, _params?: HttpParams) => of({ body: null }));
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ providers: [{ provide: ApiHttpClient, useValue: { read } }] });
+    const api = TestBed.inject(ProviderApi);
+
+    api.listRequestFeed('provider/id', 'opaque-cursor').subscribe();
+    api.readPublishedRequest('provider/id', 'request/id').subscribe();
+
+    expect(read).toHaveBeenNthCalledWith(1, '/providers/provider%2Fid/request-feed', expect.any(HttpParams));
+    const params = read.mock.calls[0][1] as HttpParams;
+    expect(params.get('cursor')).toBe('opaque-cursor');
+    expect(params.get('limit')).toBe('20');
+    expect(read).toHaveBeenNthCalledWith(2, '/providers/provider%2Fid/published-requests/request%2Fid');
+  });
+
   it('creates and executes an idempotent verification submission intent', () => {
     const intent = { idempotencyKey: 'verification-key' };
     const beginIdempotentMutation = vi.fn(() => intent);

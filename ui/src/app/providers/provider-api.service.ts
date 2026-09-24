@@ -11,6 +11,8 @@ export type ProviderRepresentation = components['schemas']['ProviderRepresentati
 export type ProviderSummary = components['schemas']['ProviderSummaryRepresentation'];
 export type SubmitProviderVerificationRequest = components['schemas']['SubmitProviderVerificationRequest'];
 export type ProviderVerificationSubmission = components['schemas']['ProviderVerificationSubmissionRepresentation'];
+export type ProviderPublishedRequest = components['schemas']['PublishedRequestRepresentation'];
+export type ProviderRequestFeed = components['schemas']['ProviderRequestFeedRepresentation'];
 
 const PROVIDER_PAGE_LIMIT = 20;
 
@@ -36,6 +38,29 @@ export class ProviderApi {
 
   read(providerId: string): Observable<ApiHttpResult<ProviderDetail>> {
     return this.#api.read<ProviderDetail>(`/providers/${encodeURIComponent(providerId)}`);
+  }
+
+  listRequestFeed(
+    providerId: string,
+    cursor: string | null = null,
+  ): Observable<ApiHttpResult<ProviderRequestFeed>> {
+    let params = new HttpParams().set('limit', PROVIDER_PAGE_LIMIT);
+    if (cursor !== null) {
+      params = params.set('cursor', cursor);
+    }
+    return this.#api.read<ProviderRequestFeed>(
+      `/providers/${encodeURIComponent(providerId)}/request-feed`,
+      params,
+    );
+  }
+
+  readPublishedRequest(
+    providerId: string,
+    requestId: string,
+  ): Observable<ApiHttpResult<ProviderPublishedRequest>> {
+    return this.#api.read<ProviderPublishedRequest>(
+      `/providers/${encodeURIComponent(providerId)}/published-requests/${encodeURIComponent(requestId)}`,
+    );
   }
 
   replaceProfile(
