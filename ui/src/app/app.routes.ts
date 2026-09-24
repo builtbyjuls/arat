@@ -73,8 +73,10 @@ export const routes: Routes = [
   },
   {
     path: 'operations/provider-verifications',
-    ...privateRoute,
-    data: { requiresIdentity: true, title: 'Provider verification review', summary: 'Pending reviews will appear here.' },
+    canActivate: [localActorRouteGuard],
+    loadComponent: () => import('./providers/provider-verification-review.component')
+      .then((component) => component.ProviderVerificationReviewComponent),
+    data: { requiresIdentity: true },
   },
   {
     path: '**',

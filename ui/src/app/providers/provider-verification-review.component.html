@@ -1,0 +1,134 @@
+<section aria-labelledby="verification-review-heading">
+  <div class="heading-row">
+    <div>
+      <h1 id="verification-review-heading" data-route-heading tabindex="-1">Provider verification review</h1>
+      <p>Review exact current pending submissions. Evidence references are opaque plain text and are not opened or fetched.</p>
+    </div>
+    <button type="button" (click)="refresh()" [disabled]="reviews.queueState() === 'loading' || reviews.queueState() === 'loading-more' || reviews.queueState() === 'refreshing' || reviews.decisionState() === 'submitting'">Refresh queue</button>
+  </div>
+
+  @if (reviews.decisionState() === 'submitting') {
+    <section class="decision-state" data-decision-status tabindex="-1" aria-live="assertive" role="status">
+      <h2>Submitting decision...</h2>
+      <p>The exact reviewed submission is being decided. A second action is disabled.</p>
+    </section>
+  } @else if (reviews.decisionState() === 'network-error') {
+    <section class="decision-state" data-decision-status tabindex="-1" aria-live="assertive" role="alert">
+      <h2>Decision result is uncertain</h2>
+      <p>Retry sends the exact same decision with the same submission, note, and idempotency key.</p>
+      @if (reviews.decisionCorrelationId()) { <p>Correlation ID: {{ reviews.decisionCorrelationId() }}</p> }
+      <button type="button" (click)="retryDecision()">Retry exact decision</button>
+      <button type="button" (click)="dismissDecision()">Dismiss and refresh queue</button>
+    </section>
+  } @else if (reviews.decisionState() === 'conflict') {
+    <section class="decision-state" data-decision-status tabindex="-1" aria-live="assertive" role="alert">
+      <h2>Submission is no longer pending</h2>
+      <p>The exact submission shown could not be decided. Refresh the server queue before reviewing another submission.</p>
+      @if (reviews.decisionCorrelationId()) { <p>Correlation ID: {{ reviews.decisionCorrelationId() }}</p> }
+      <button type="button" (click)="dismissDecision()">Refresh pending queue</button>
+    </section>
+  } @else if (reviews.decisionState() === 'error') {
+    <section class="decision-state" data-decision-status tabindex="-1" aria-live="assertive" role="alert">
+      <h2>Decision was not accepted</h2>
+      @if (reviews.decisionProblemCode() === 'IDEMPOTENCY_KEY_REUSED') {
+        <p>This decision key was already used with different command content. Refresh before starting a new decision.</p>
+      } @else if (reviews.decisionProblemCode() === 'FORBIDDEN_PLATFORM_ROLE') {
+        <p>Only a platform operator can decide provider verification.</p>
+      } @else if (reviews.decisionProblemCode() === 'VALIDATION_FAILED') {
+        <p>The server rejected the decision input. Review the optional note and try again.</p>
+      } @else {
+        <p>The decision could not be completed. Refresh before trying again.</p>
+      }
+      @if (reviews.decisionCorrelationId()) { <p>Correlation ID: {{ reviews.decisionCorrelationId() }}</p> }
+      <button type="button" (click)="dismissDecision()">Dismiss decision error</button>
+    </section>
+  } @else if (reviews.decisionState() === 'succeeded' && reviews.decisionResult(); as result) {
+    <section class="decision-state" data-decision-status tabindex="-1" aria-live="polite" role="status">
+      <h2>Decision recorded</h2>
+      <p>{{ decisionLabel(result.decision.decision) }} was recorded for submission {{ result.decision.submissionId }}.</p>
+      <p>Status recorded by this decision: {{ result.decision.verificationStatus }}. Provider version recorded by this decision: {{ result.decision.providerVersion }}.</p>
+      @if (result.exactRetry) { <p>This is the historical result of retrying the exact same decision intent. It is not a fresh provider profile read.</p> }
+      <button type="button" (click)="dismissDecision()">Review another submission</button>
+    </section>
+  }
+
+  @if (reviews.queueState() === 'loading') {
+    <p class="status" role="status">Loading pending provider verifications...</p>
+  } @else if (reviews.queueState() === 'forbidden') {
+    <section class="state" aria-live="assertive" role="alert">
+      <h2>Operator access required</h2>
+      <p>This actor cannot view or decide provider verification submissions.</p>
+      @if (reviews.queueCorrelationId()) { <p>Correlation ID: {{ reviews.queueCorrelationId() }}</p> }
+    </section>
+  } @else if (reviews.queueState() === 'error' && reviews.items().length === 0) {
+    <section class="state" aria-live="assertive" role="alert">
+      <h2>Pending queue is unavailable</h2>
+      <p>Try refreshing. No provider evidence is shown from a failed request.</p>
+      @if (reviews.queueCorrelationId()) { <p>Correlation ID: {{ reviews.queueCorrelationId() }}</p> }
+    </section>
+  } @else if (reviews.queueState() === 'empty') {
+    <section class="state" aria-live="polite" role="status">
+      <h2>No pending submissions</h2>
+      <p>The server returned an empty operator review queue.</p>
+    </section>
+  } @else {
+    @if (reviews.queueState() === 'error') {
+      <section class="state" aria-live="assertive" role="alert">
+        <h2>Pending queue could not be refreshed</h2>
+        <p>Previously loaded submissions remain shown. Refresh before making a decision if their state may have changed.</p>
+        @if (reviews.queueCorrelationId()) { <p>Correlation ID: {{ reviews.queueCorrelationId() }}</p> }
+      </section>
+    }
+    <ul class="verification-list">
+      @for (item of reviews.items(); track item.submissionId) {
+        <li class="verification-card">
+          <article [attr.aria-labelledby]="'provider-name-' + item.submissionId">
+            <h2 [id]="'provider-name-' + item.submissionId">{{ item.displayName }}</h2>
+            <dl>
+              <div><dt>Verification status</dt><dd>{{ item.verificationStatus }}</dd></div>
+              <div><dt>Submitted</dt><dd><time [attr.datetime]="item.submittedAt">{{ item.submittedAt }}</time></dd></div>
+              <div><dt>Submission ID</dt><dd>{{ item.submissionId }}</dd></div>
+              <div><dt>Provider ID</dt><dd>{{ item.providerId }}</dd></div>
+              <div><dt>Current provider version</dt><dd>{{ item.providerVersion }}</dd></div>
+              <div><dt>Supported categories</dt><dd>{{ item.supportedCategories?.join(', ') }}</dd></div>
+              <div><dt>Service area codes</dt><dd>{{ item.serviceAreaCodes?.join(', ') }}</dd></div>
+            </dl>
+            <h3>Evidence references</h3>
+            <ul class="evidence-list">
+              @for (reference of item.evidenceReferences; track $index) {
+                <li>{{ reference }}</li>
+              }
+            </ul>
+            <div class="decision-actions">
+              <button type="button" class="accept-action" (click)="openReview(item, 'ACCEPT', $event)" [disabled]="reviews.decisionState() !== 'idle' || reviews.queueState() === 'loading' || reviews.queueState() === 'loading-more' || reviews.queueState() === 'refreshing'">Review acceptance</button>
+              <button type="button" class="reject-action" (click)="openReview(item, 'REJECT', $event)" [disabled]="reviews.decisionState() !== 'idle' || reviews.queueState() === 'loading' || reviews.queueState() === 'loading-more' || reviews.queueState() === 'refreshing'">Review rejection</button>
+            </div>
+            @if (review(); as currentReview) {
+              @if (currentReview.item.submissionId === item.submissionId) {
+                <section class="decision-confirmation" aria-labelledby="decision-confirmation-heading" aria-describedby="decision-confirmation-description" aria-live="polite" role="alertdialog">
+                  <h3 id="decision-confirmation-heading">{{ decisionLabel(currentReview.decision) }} this exact submission?</h3>
+                  <p id="decision-confirmation-description">This {{ currentReview.decision === 'ACCEPT' ? 'accepts' : 'rejects' }} submission {{ item.submissionId }} for {{ item.displayName }}. Accept and reject are separate decisions.</p>
+                  <form [formGroup]="noteForm" (ngSubmit)="confirmDecision()" novalidate>
+                    <label for="verification-decision-note">Optional decision reason</label>
+                    <textarea id="verification-decision-note" formControlName="note" maxlength="500" [attr.aria-describedby]="noteForm.controls.note.touched && noteForm.controls.note.invalid ? 'verification-decision-note-help verification-decision-note-error' : 'verification-decision-note-help'"></textarea>
+                    <p id="verification-decision-note-help">Use up to 500 characters. The reason is sent as the documented decision note.</p>
+                    @if (noteForm.controls.note.touched && noteForm.controls.note.invalid) { <p id="verification-decision-note-error" class="field-error">Decision reason must be at most 500 characters.</p> }
+                    <div class="decision-actions">
+                      <button #confirmDecisionButton type="submit" [class.reject-confirm]="currentReview.decision === 'REJECT'" [disabled]="reviews.decisionState() !== 'idle'">Confirm {{ decisionLabel(currentReview.decision).toLowerCase() }}</button>
+                      <button type="button" (click)="cancelReview()" [disabled]="reviews.decisionState() === 'submitting'">Cancel</button>
+                    </div>
+                  </form>
+                </section>
+              }
+            }
+          </article>
+        </li>
+      }
+    </ul>
+    @if (reviews.queueState() === 'loading-more') { <p class="status" role="status">Loading more pending submissions...</p> }
+    @if (reviews.queueState() === 'refreshing') { <p class="status" role="status">Refreshing pending submissions...</p> }
+    @if (reviews.nextCursor() !== null) {
+      <button type="button" class="load-more" (click)="loadMore()" [disabled]="reviews.queueState() === 'loading-more' || reviews.decisionState() === 'submitting'">Load more pending submissions</button>
+    }
+  }
+</section>
