@@ -6,6 +6,7 @@ import { PlanDetailService } from './plan-detail.service';
 import { PlanRequirementEditService } from './plan-requirement-edit.service';
 import { PlanRequirementFieldsComponent } from './plan-requirement-fields.component';
 import { PlanPreferenceService } from './plan-preference.service';
+import { PlanFinalizationService } from './plan-finalization.service';
 import { ActorScopeResetService } from '../identity/actor-scope-reset.service';
 import {
   createRequirementForm,
@@ -19,6 +20,12 @@ import {
   togglePreferenceWindow,
   updatePreferenceValidation,
 } from './plan-preference-form';
+import {
+  createFinalizeRequirementsRequest,
+  createPlanFinalizationForm,
+  validatePlanFinalization,
+} from './plan-finalization-form';
+import { RequirementFinalization } from './plan-api.service';
 
 @Component({
   imports: [KeyValuePipe, PlanRequirementFieldsComponent, ReactiveFormsModule, RouterLink],
@@ -30,26 +37,34 @@ export class PlanDetailComponent implements OnDestroy, OnInit {
   readonly planDetail = inject(PlanDetailService);
   readonly requirementEdit = inject(PlanRequirementEditService);
   readonly preferences = inject(PlanPreferenceService);
+  readonly finalizations = inject(PlanFinalizationService);
   readonly #scopeReset = inject(ActorScopeResetService);
   readonly #route = inject(ActivatedRoute);
   readonly editForm = createRequirementForm();
   readonly preferenceForm = createPreferenceForm();
+  readonly finalizationForm = createPlanFinalizationForm();
   readonly preferenceFormReady = signal(false);
   #destroyed = false;
   #preferenceFormPlanId: string | null = null;
+  #finalizationFormPlanId: string | null = null;
+  #loadRequestId = 0;
   #unregisterScopeReset: (() => void) | null = null;
 
   ngOnInit(): void {
     this.#unregisterScopeReset = this.#scopeReset.register(() => {
+      this.#loadRequestId += 1;
       this.#preferenceFormPlanId = null;
+      this.#finalizationFormPlanId = null;
       this.preferenceFormReady.set(false);
       hydratePreferenceForm(this.preferenceForm, null);
+      this.finalizationForm.reset({ candidateWindowId: '', offerDeadline: '' });
     });
     this.#route.paramMap.subscribe((params) => {
       const planId = params.get('planId');
       if (planId !== null) {
         this.requirementEdit.usePlan(planId);
         this.preferences.usePlan(planId);
+        this.finalizations.usePlan(planId);
         void this.loadAndHydrate(planId);
       }
     });
@@ -57,12 +72,14 @@ export class PlanDetailComponent implements OnDestroy, OnInit {
 
   ngOnDestroy(): void {
     this.#destroyed = true;
+    this.#loadRequestId += 1;
     this.#unregisterScopeReset?.();
     this.#unregisterScopeReset = null;
     const planId = this.planId();
     if (planId !== null) {
       this.requirementEdit.releasePlan(planId);
       this.preferences.releasePlan(planId);
+      this.finalizations.releasePlan(planId);
     }
   }
 
@@ -70,6 +87,7 @@ export class PlanDetailComponent implements OnDestroy, OnInit {
     const planId = this.planId();
     if (planId !== null) {
       this.requirementEdit.dismiss();
+      this.finalizations.dismiss();
       void this.loadAndHydrate(planId);
     }
   }
@@ -200,6 +218,111 @@ export class PlanDetailComponent implements OnDestroy, OnInit {
     this.preferences.dismiss();
   }
 
+  submitFinalization(): void {
+    const plan = this.planDetail.plan();
+    const planId = this.planId();
+    const etag = this.planDetail.etag();
+    if (plan === null || planId === null) {
+      return;
+    }
+    if (!validatePlanFinalization(this.finalizationForm, plan)) {
+      this.finalizationForm.markAllAsTouched();
+      return;
+    }
+    if (etag === null) {
+      void this.loadAndHydrate(planId);
+      return;
+    }
+    const request = createFinalizeRequirementsRequest(this.finalizationForm, plan);
+    void this.finalizations.finalize(planId, request, etag)
+      .then((result) => this.handleFinalization(result, planId));
+  }
+
+  retryFinalization(): void {
+    const planId = this.planId();
+    if (planId !== null) {
+      void this.finalizations.retry(planId)
+        .then((result) => this.handleFinalization(result, planId));
+    }
+  }
+
+  refreshFinalizationConflict(): void {
+    const planId = this.planId();
+    if (planId === null) {
+      return;
+    }
+    void Promise.all([this.planDetail.load(planId), this.finalizations.load(planId)]).then(() => {
+      if (this.#destroyed || this.planId() !== planId) {
+        return;
+      }
+      if (this.finalizations.historyProblemCode() === 'PRIVATE_RESOURCE_NOT_FOUND') {
+        this.planDetail.discardInaccessiblePlan(planId);
+        return;
+      }
+      this.finalizations.dismiss();
+    });
+  }
+
+  dismissFinalizationError(): void {
+    this.finalizations.dismiss();
+  }
+
+  loadMoreFinalizations(): void {
+    const planId = this.planId();
+    if (planId !== null) {
+      void this.finalizations.loadMore(planId).then(() => {
+        if (
+          !this.#destroyed
+          && this.planId() === planId
+          && this.finalizations.historyProblemCode() === 'PRIVATE_RESOURCE_NOT_FOUND'
+        ) {
+          this.planDetail.discardInaccessiblePlan(planId);
+        }
+      });
+    }
+  }
+
+  retryFinalizationHistory(): void {
+    const planId = this.planId();
+    if (planId === null) {
+      return;
+    }
+    if (this.finalizations.items().length > 0 && this.finalizations.nextCursor() !== null) {
+      this.loadMoreFinalizations();
+      return;
+    }
+    void this.finalizations.refreshHistory(planId).then(() => {
+      if (
+        !this.#destroyed
+        && this.planId() === planId
+        && this.finalizations.historyProblemCode() === 'PRIVATE_RESOURCE_NOT_FOUND'
+      ) {
+        this.planDetail.discardInaccessiblePlan(planId);
+      }
+    });
+  }
+
+  finalizationViolation(field: string): readonly { field: string; message: string }[] {
+    return this.finalizations.violations().filter((violation) => violation.field === field);
+  }
+
+  finalizationHistoryLabel(item: RequirementFinalization, index: number): string {
+    if (item.currentBasis !== true) {
+      return 'Stale basis - plan requirements changed after this finalization.';
+    }
+    return index === this.finalizations.items().findIndex((candidate) => candidate.currentBasis === true)
+      ? 'Current basis - newest recoverable candidate.'
+      : 'Current basis - older immutable candidate.';
+  }
+
+  finalizationWarningLabel(warning: string): string {
+    return ({
+      NO_CURRENT_PREFERENCE_INPUT: 'No current preference input was available when this snapshot was finalized.',
+      STALE_PREFERENCE_INPUT_PRESENT: 'Some preference input was based on an earlier plan version.',
+    } as Record<string, string>)[warning]
+      ?? 'The server returned an unrecognized finalization warning.';
+  }
+
   stateLabel(state: string | undefined): string {
     return ({
       COLLABORATING: 'Collaborating',
@@ -229,11 +352,13 @@ export class PlanDetailComponent implements OnDestroy, OnInit {
   attributeValue(value: unknown): string { return String(value); }
 
   private async loadAndHydrate(planId: string): Promise<void> {
+    const loadRequestId = ++this.#loadRequestId;
+    const actorGeneration = this.#scopeReset.generation();
     if (this.#preferenceFormPlanId !== planId) {
       this.preferenceFormReady.set(false);
     }
     await this.planDetail.load(planId);
-    if (this.#destroyed || this.planId() !== planId) {
+    if (!this.isCurrentLoad(loadRequestId, planId, actorGeneration)) {
       return;
     }
     const plan = this.planDetail.plan();
@@ -243,7 +368,23 @@ export class PlanDetailComponent implements OnDestroy, OnInit {
       } catch {
         this.editForm.controls.candidateWindows.setErrors({ invalidLocalDateTime: true });
       }
+      if (this.#finalizationFormPlanId !== planId) {
+        this.finalizationForm.reset({
+          candidateWindowId: plan.requirements?.candidateWindows?.[0]?.id ?? '',
+          offerDeadline: '',
+        });
+        this.#finalizationFormPlanId = planId;
+      } else if (!(plan.requirements?.candidateWindows ?? []).some(
+        (window) => window.id === this.finalizationForm.controls.candidateWindowId.value,
+      )) {
+        this.finalizationForm.controls.candidateWindowId.setValue(
+          plan.requirements?.candidateWindows?.[0]?.id ?? '',
+        );
+      }
       await this.preferences.load(planId);
+      if (!this.isCurrentLoad(loadRequestId, planId, actorGeneration)) {
+        return;
+      }
       if (this.preferences.summaryProblemCode() === 'PRIVATE_RESOURCE_NOT_FOUND') {
         this.planDetail.discardInaccessiblePlan(planId);
         return;
@@ -258,7 +399,63 @@ export class PlanDetailComponent implements OnDestroy, OnInit {
         this.#preferenceFormPlanId = planId;
         this.preferenceFormReady.set(true);
       }
+      await this.finalizations.load(planId);
+      if (
+        !this.#destroyed
+        && this.planId() === planId
+        && this.finalizations.historyProblemCode() === 'PRIVATE_RESOURCE_NOT_FOUND'
+      ) {
+        this.planDetail.discardInaccessiblePlan(planId);
+      }
     }
+  }
+
+  private async handleFinalization(
+    result: RequirementFinalization | null,
+    planId: string,
+  ): Promise<void> {
+    if (this.#destroyed || this.planId() !== planId) {
+      return;
+    }
+    if (result === null) {
+      if (this.finalizations.problemCode() === 'PRIVATE_RESOURCE_NOT_FOUND') {
+        this.planDetail.discardInaccessiblePlan(planId);
+      }
+      return;
+    }
+
+    const actorGeneration = this.#scopeReset.generation();
+    await this.planDetail.load(planId);
+    if (
+      this.#destroyed
+      || this.planId() !== planId
+      || actorGeneration !== this.#scopeReset.generation()
+    ) {
+      return;
+    }
+    if (this.planDetail.state() !== 'ready') {
+      this.finalizations.releasePlan(planId);
+      return;
+    }
+    await this.finalizations.refreshHistory(planId);
+    if (
+      !this.#destroyed
+      && this.planId() === planId
+      && this.finalizations.historyProblemCode() === 'PRIVATE_RESOURCE_NOT_FOUND'
+    ) {
+      this.planDetail.discardInaccessiblePlan(planId);
+    }
+  }
+
+  private isCurrentLoad(
+    loadRequestId: number,
+    planId: string,
+    actorGeneration: number,
+  ): boolean {
+    return !this.#destroyed
+      && loadRequestId === this.#loadRequestId
+      && this.planId() === planId
+      && actorGeneration === this.#scopeReset.generation();
   }
 
   private requirementRequest(): ReturnType<typeof createRequirementReplacementRequest> | null {

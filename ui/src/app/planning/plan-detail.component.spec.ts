@@ -7,6 +7,7 @@ import { PlanDetailComponent } from './plan-detail.component';
 import { PlanDetailService } from './plan-detail.service';
 import { PlanRequirementEditService } from './plan-requirement-edit.service';
 import { PlanPreferenceService } from './plan-preference.service';
+import { PlanFinalizationService } from './plan-finalization.service';
 import { ActorScopeResetService } from '../identity/actor-scope-reset.service';
 
 describe('PlanDetailComponent', () => {
@@ -40,6 +41,136 @@ describe('PlanDetailComponent', () => {
     expect(root.textContent).toContain('Showing the last server response. Refresh before taking a later action.');
     expect(root.querySelector<HTMLButtonElement>('button')?.textContent).toContain('Refresh plan');
     expect(root.querySelector('.detail-card')).not.toBeNull();
+  });
+
+  it('renders a recovered immutable candidate with counts, warnings, and stale history labels', async () => {
+    const finalizations = fakeFinalizations();
+    const current = finalization('current-1', true);
+    finalizations.items.set([current, finalization('stale-1', false)]);
+    finalizations.selected.set(current);
+    const fixture = await createComponent(fakeDetail('ready'), fakeEdit(), fakePreferences(), true, finalizations);
+    const finalizationSection = (fixture.nativeElement as HTMLElement).querySelector('.finalization');
+
+    expect(finalizationSection?.textContent).toContain('Immutable recovered finalization');
+    expect(finalizationSection?.textContent).toContain('Current preferences2');
+    expect(finalizationSection?.textContent).toContain('Stale preferences1');
+    expect(finalizationSection?.textContent).toContain('Some preference input was based on an earlier plan version.');
+    expect(finalizationSection?.textContent).toContain('Current basis - newest recoverable candidate.');
+    expect(finalizationSection?.textContent).toContain('Stale basis - plan requirements changed after this finalization.');
+    expect(finalizationSection?.textContent).toContain('this browser does not assume it is publishable');
+  });
+
+  it('associates invalid finalization times with the phone-width controls', async () => {
+    const fixture = await createComponent(fakeDetail('ready'));
+    fixture.componentInstance.finalizationForm.setValue({
+      candidateWindowId: 'window-1',
+      offerDeadline: '2027-01-09T09:00',
+    });
+    fixture.componentInstance.submitFinalization();
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+
+    expect(root.querySelector('#offer-deadline')?.getAttribute('aria-errormessage')).toBe('offer-deadline-error');
+    expect(root.querySelector('#offer-deadline-error')?.textContent).toContain('strictly before the selected start');
+  });
+
+  it('clears the finalization form and recovered history when the actor changes', async () => {
+    const finalizations = fakeFinalizations();
+    finalizations.items.set([finalization('current-1', true)]);
+    finalizations.selected.set(finalization('current-1', true));
+    const fixture = await createComponent(fakeDetail('ready'), fakeEdit(), fakePreferences(), true, finalizations);
+    fixture.componentInstance.finalizationForm.controls.offerDeadline.setValue('2027-01-08T10:00');
+
+    TestBed.inject(ActorScopeResetService).reset();
+
+    expect(fixture.componentInstance.finalizationForm.controls.offerDeadline.value).toBe('');
+  });
+
+  it('does not start a stale finalization read after the actor changes during preference loading', async () => {
+    let completeLoad!: () => void;
+    const preferences = fakePreferences();
+    preferences.load.mockImplementation(() => new Promise<void>((resolve) => { completeLoad = resolve; }));
+    const finalizations = fakeFinalizations();
+    const fixture = await createComponent(fakeDetail('ready'), fakeEdit(), preferences, false, finalizations);
+    await Promise.resolve();
+
+    TestBed.inject(ActorScopeResetService).reset();
+    completeLoad();
+    await fixture.whenStable();
+
+    expect(finalizations.load).not.toHaveBeenCalled();
+  });
+
+  it('discards the plan when a finalization write proves access was revoked', async () => {
+    const finalizations = fakeFinalizations();
+    finalizations.finalize.mockImplementation(async () => {
+      finalizations.problemCode.set('PRIVATE_RESOURCE_NOT_FOUND');
+      finalizations.saveState.set('error');
+      return null;
+    });
+    const detail = fakeDetail('ready');
+    const fixture = await createComponent(detail, fakeEdit(), fakePreferences(), true, finalizations);
+    fixture.componentInstance.finalizationForm.setValue({
+      candidateWindowId: 'window-1',
+      offerDeadline: '2027-01-08T10:00',
+    });
+
+    fixture.componentInstance.submitFinalization();
+    await fixture.whenStable();
+
+    expect(detail.discardInaccessiblePlan).toHaveBeenCalledWith('plan-1');
+  });
+
+  it('discards the plan when an older-history page proves access was revoked', async () => {
+    const finalizations = fakeFinalizations();
+    finalizations.nextCursor.set('older-page');
+    finalizations.loadMore.mockImplementation(async () => {
+      finalizations.historyProblemCode.set('PRIVATE_RESOURCE_NOT_FOUND');
+    });
+    const detail = fakeDetail('ready');
+    const fixture = await createComponent(detail, fakeEdit(), fakePreferences(), true, finalizations);
+
+    fixture.componentInstance.loadMoreFinalizations();
+    await fixture.whenStable();
+
+    expect(detail.discardInaccessiblePlan).toHaveBeenCalledWith('plan-1');
+  });
+
+  it('keeps an exact command result visible while exposing a failed fresh history read', async () => {
+    const finalizations = fakeFinalizations();
+    finalizations.commandResult.set(finalization('replayed-old', true));
+    finalizations.historyState.set('error');
+    const fixture = await createComponent(fakeDetail('ready'), fakeEdit(), fakePreferences(), true, finalizations);
+    const section = (fixture.nativeElement as HTMLElement).querySelector('.finalization');
+
+    expect(section?.textContent).toContain('Immutable finalization command result');
+    expect(section?.textContent).toContain('Finalization history could not be loaded');
+    const retry = Array.from(section?.querySelectorAll('button') ?? [])
+      .find((button) => button.textContent?.includes('Retry finalization history'));
+    retry?.click();
+    await fixture.whenStable();
+
+    expect(finalizations.refreshHistory).toHaveBeenCalledWith('plan-1');
+  });
+
+  it('exposes a failed older page without hiding retained history and retries that page', async () => {
+    const finalizations = fakeFinalizations();
+    const current = finalization('current-1', true);
+    finalizations.items.set([current]);
+    finalizations.selected.set(current);
+    finalizations.nextCursor.set('older-page');
+    finalizations.historyState.set('error');
+    const fixture = await createComponent(fakeDetail('ready'), fakeEdit(), fakePreferences(), true, finalizations);
+    const section = (fixture.nativeElement as HTMLElement).querySelector('.finalization');
+
+    expect(section?.textContent).toContain('Current basis - newest recoverable candidate.');
+    expect(section?.textContent).toContain('Older finalization history could not be loaded.');
+    const retry = Array.from(section?.querySelectorAll('button') ?? [])
+      .find((button) => button.textContent?.includes('Retry finalization history'));
+    retry?.click();
+    await fixture.whenStable();
+
+    expect(finalizations.loadMore).toHaveBeenCalledWith('plan-1');
   });
 
   it('renders the private group preference summary as advisory and marks stale input', async () => {
@@ -311,6 +442,7 @@ async function createComponent(
   edit = fakeEdit(),
   preferences = fakePreferences(),
   awaitStable = true,
+  finalizations = fakeFinalizations(),
 ) {
   await TestBed.configureTestingModule({
     imports: [PlanDetailComponent],
@@ -320,6 +452,7 @@ async function createComponent(
       { provide: PlanDetailService, useValue: detail },
       { provide: PlanRequirementEditService, useValue: edit },
       { provide: PlanPreferenceService, useValue: preferences },
+      { provide: PlanFinalizationService, useValue: finalizations },
     ],
   }).compileComponents();
   const fixture = TestBed.createComponent(PlanDetailComponent);
@@ -329,6 +462,31 @@ async function createComponent(
   }
   fixture.detectChanges();
   return fixture;
+}
+
+function fakeFinalizations() {
+  const saveState = signal<'conflict' | 'error' | 'idle' | 'network-error' | 'submitting'>('idle');
+  return {
+    items: signal<readonly Record<string, unknown>[]>([]),
+    nextCursor: signal<string | null>(null),
+    historyState: signal<'error' | 'loading' | 'ready'>('ready'),
+    historyProblemCode: signal<string | null>(null),
+    saveState,
+    problemCode: signal<string | null>(null),
+    correlationId: signal<string | null>(null),
+    violations: signal<readonly { field: string; message: string }[]>([]),
+    selected: signal<Record<string, unknown> | null>(null),
+    commandResult: signal<Record<string, unknown> | null>(null),
+    recoverable: signal<Record<string, unknown> | null>(null),
+    usePlan: vi.fn(),
+    releasePlan: vi.fn(),
+    load: vi.fn().mockResolvedValue(undefined),
+    refreshHistory: vi.fn().mockResolvedValue(undefined),
+    loadMore: vi.fn().mockResolvedValue(undefined),
+    finalize: vi.fn().mockResolvedValue(null),
+    retry: vi.fn().mockResolvedValue(null),
+    dismiss: vi.fn(() => saveState.set('idle')),
+  };
 }
 
 function fakePreferences() {
@@ -391,5 +549,15 @@ function fakeEdit(initialState: 'conflict' | 'error' | 'idle' | 'network-error' 
     markRefreshed: vi.fn(() => state.set('reapply-ready')),
     reapply: vi.fn().mockResolvedValue(null),
     dismiss: vi.fn(() => state.set('idle')),
+  };
+}
+
+function finalization(finalizationId: string, currentBasis: boolean) {
+  return {
+    finalizationId, currentBasis, basisPlanVersion: currentBasis ? 7 : 6,
+    selectedStartAt: '2027-01-09T01:00:00Z', selectedEndAt: '2027-01-09T03:00:00Z',
+    offerDeadline: '2027-01-08T02:00:00Z', timeZone: 'Asia/Manila', category: 'COURT',
+    area: { code: 'BGC', radiusKm: 5 }, headcount: { minimum: 4, maximum: 10 },
+    currentPreferenceCount: 2, stalePreferenceCount: 1, warnings: ['STALE_PREFERENCE_INPUT_PRESENT'],
   };
 }

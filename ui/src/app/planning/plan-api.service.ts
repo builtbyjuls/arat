@@ -20,6 +20,9 @@ export type RequirementReplacementRequest = components['schemas']['RequirementRe
 export type CreatePreferenceRequest = components['schemas']['CreatePreferenceRequest'];
 export type PlanPreference = components['schemas']['PlanPreference'];
 export type PreferenceCollection = components['schemas']['PreferenceCollectionRepresentation'];
+export type FinalizeRequirementsRequest = components['schemas']['FinalizeRequirementsRequest'];
+export type RequirementFinalization = components['schemas']['RequirementFinalization'];
+export type RequirementFinalizationPage = components['schemas']['RequirementFinalizationPageRepresentation'];
 
 const PLAN_PAGE_LIMIT = 20;
 
@@ -60,6 +63,20 @@ export class PlanApi {
     return this.#api.read<PreferenceCollection>(`/plans/${encodeURIComponent(planId)}/preferences`);
   }
 
+  listFinalizations(
+    planId: string,
+    cursor: string | null = null,
+  ): Observable<ApiHttpResult<RequirementFinalizationPage>> {
+    let params = new HttpParams().set('limit', PLAN_PAGE_LIMIT);
+    if (cursor !== null) {
+      params = params.set('cursor', cursor);
+    }
+    return this.#api.read<RequirementFinalizationPage>(
+      `/plans/${encodeURIComponent(planId)}/requirement-finalizations`,
+      params,
+    );
+  }
+
   putPreference(
     planId: string,
     request: CreatePreferenceRequest,
@@ -71,6 +88,25 @@ export class PlanApi {
       body: request,
       precondition: etag === null ? ifNoneMatch() : ifMatch(etag),
     });
+  }
+
+  createFinalizationIntent(
+    planId: string,
+    request: FinalizeRequirementsRequest,
+    etag: string,
+  ): IdempotentMutationIntent<FinalizeRequirementsRequest> {
+    return this.#api.beginIdempotentMutation({
+      method: 'POST',
+      path: `/plans/${encodeURIComponent(planId)}/requirement-finalization`,
+      body: request,
+      precondition: ifMatch(etag),
+    });
+  }
+
+  finalizeRequirements(
+    intent: IdempotentMutationIntent<FinalizeRequirementsRequest>,
+  ): Observable<ApiHttpResult<RequirementFinalization>> {
+    return this.#api.executeIdempotent<RequirementFinalization, FinalizeRequirementsRequest>(intent);
   }
 
   createIntent(

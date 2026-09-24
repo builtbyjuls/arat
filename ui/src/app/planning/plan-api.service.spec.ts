@@ -61,4 +61,42 @@ describe('PlanApi', () => {
       method: 'POST', path: '/groups/group%20id/plans', body: request,
     });
   });
+
+  it('pages private finalization history with an opaque cursor', () => {
+    const read = vi.fn((_path: string, _params: HttpParams) => of({ body: { items: [] } }));
+    TestBed.configureTestingModule({ providers: [{ provide: ApiHttpClient, useValue: { read } }] });
+
+    TestBed.inject(PlanApi).listFinalizations('plan id', 'opaque-cursor').subscribe();
+
+    expect(read).toHaveBeenCalledWith(
+      '/plans/plan%20id/requirement-finalizations',
+      expect.any(HttpParams),
+    );
+    const params = read.mock.calls[0][1] as HttpParams;
+    expect(params.get('cursor')).toBe('opaque-cursor');
+    expect(params.get('limit')).toBe('20');
+  });
+
+  it('creates one versioned finalization intent and executes it', () => {
+    const intent = { idempotencyKey: 'key-1' } as IdempotentMutationIntent<unknown>;
+    const beginIdempotentMutation = vi.fn(() => intent);
+    const executeIdempotent = vi.fn(() => of({ body: null }));
+    TestBed.configureTestingModule({
+      providers: [{ provide: ApiHttpClient, useValue: { beginIdempotentMutation, executeIdempotent } }],
+    });
+    const api = TestBed.inject(PlanApi);
+    const request = { candidateWindowId: 'window-1', offerDeadline: '2027-01-08T10:00:00+08:00' };
+
+    const createdIntent = api.createFinalizationIntent('plan id', request, '"7"');
+    api.finalizeRequirements(createdIntent).subscribe();
+
+    expect(createdIntent).toBe(intent);
+    expect(beginIdempotentMutation).toHaveBeenCalledWith({
+      method: 'POST',
+      path: '/plans/plan%20id/requirement-finalization',
+      body: request,
+      precondition: { header: 'If-Match', value: '"7"' },
+    });
+    expect(executeIdempotent).toHaveBeenCalledWith(intent);
+  });
 });

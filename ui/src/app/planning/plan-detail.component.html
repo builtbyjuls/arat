@@ -30,7 +30,7 @@
         <p>Plan version: {{ plan.version ?? 'Unavailable' }}</p>
         <p class="stale-indicator" role="status">Showing the last server response. Refresh before taking a later action.</p>
       </div>
-      <button type="button" (click)="refresh()" [disabled]="requirementEdit.state() === 'conflict' || requirementEdit.state() === 'network-error' || requirementEdit.state() === 'reapply-ready' || requirementEdit.state() === 'submitting' || preferences.saveState() === 'submitting'">Refresh plan</button>
+      <button type="button" (click)="refresh()" [disabled]="requirementEdit.state() === 'conflict' || requirementEdit.state() === 'network-error' || requirementEdit.state() === 'reapply-ready' || requirementEdit.state() === 'submitting' || preferences.saveState() === 'submitting' || finalizations.saveState() === 'submitting' || finalizations.saveState() === 'network-error'">Refresh plan</button>
     </div>
 
     <section class="detail-card" aria-labelledby="requirements-heading">
@@ -267,6 +267,158 @@
             </li>
           }
         </ul>
+      }
+    </section>
+
+    <section class="detail-card finalization" aria-labelledby="finalization-heading">
+      <h2 id="finalization-heading">Finalize plan requirements</h2>
+      <p>This is an organizer action. Choose one active window and an offer deadline deliberately. Member preferences are advisory and do not choose either value.</p>
+      <p>The deadline is entered in {{ plan.requirements?.timeZone ?? 'the plan time zone' }}. The server checks the current time, plan version, active window, and organizer role.</p>
+
+      @if (plan.state === 'CANCELLED') {
+        <p role="status">Cancelled plans cannot be finalized.</p>
+      } @else {
+        <form [formGroup]="finalizationForm" (ngSubmit)="submitFinalization()">
+          <fieldset [attr.aria-errormessage]="(finalizationForm.controls.candidateWindowId.invalid && finalizationForm.controls.candidateWindowId.touched) || finalizationViolation('candidateWindowId').length > 0 ? 'finalization-window-error' : null">
+            <legend>Active window</legend>
+            @if ((plan.requirements?.candidateWindows?.length ?? 0) > 0) {
+              @for (window of plan.requirements?.candidateWindows ?? []; track window.id) {
+                @if (window.id) {
+                  <label class="choice"><input type="radio" formControlName="candidateWindowId" [value]="window.id" /> {{ formatWindow(window.startAt, plan.requirements?.timeZone) }} to {{ formatWindow(window.endAt, plan.requirements?.timeZone) }}</label>
+                }
+              }
+            } @else {
+              <p>No active windows are available. Edit the plan requirements before finalizing.</p>
+            }
+          </fieldset>
+          @if ((finalizationForm.controls.candidateWindowId.invalid && finalizationForm.controls.candidateWindowId.touched) || finalizationViolation('candidateWindowId').length > 0) {
+            <div id="finalization-window-error" class="field-error" role="alert">
+              @if (finalizationForm.controls.candidateWindowId.invalid && finalizationForm.controls.candidateWindowId.touched) { <p>Choose an active candidate window.</p> }
+              @for (violation of finalizationViolation('candidateWindowId'); track violation.field + violation.message) { <p>{{ violation.message }}</p> }
+            </div>
+          }
+
+          <label for="offer-deadline">Offer deadline</label>
+          <input id="offer-deadline" type="datetime-local" formControlName="offerDeadline" aria-describedby="offer-deadline-help" [attr.aria-errormessage]="(finalizationForm.controls.offerDeadline.invalid && finalizationForm.controls.offerDeadline.touched) || finalizationViolation('offerDeadline').length > 0 ? 'offer-deadline-error' : null" />
+          <p id="offer-deadline-help">Use {{ plan.requirements?.timeZone ?? 'the plan time zone' }}. The deadline must be in the future and strictly before the selected start.</p>
+          @if ((finalizationForm.controls.offerDeadline.invalid && finalizationForm.controls.offerDeadline.touched) || finalizationViolation('offerDeadline').length > 0) {
+            <div id="offer-deadline-error" class="field-error" role="alert">
+              @if (finalizationForm.controls.offerDeadline.hasError('required')) { <p>Enter an offer deadline.</p> }
+              @if (finalizationForm.controls.offerDeadline.hasError('invalidLocalDateTime')) { <p>Enter a real local date and time in the plan time zone.</p> }
+              @if (finalizationForm.controls.offerDeadline.hasError('notFuture')) { <p>The offer deadline must be in the future.</p> }
+              @if (finalizationForm.controls.offerDeadline.hasError('notBeforeStart')) { <p>The offer deadline must be strictly before the selected start.</p> }
+              @for (violation of finalizationViolation('offerDeadline'); track violation.field + violation.message) { <p>{{ violation.message }}</p> }
+            </div>
+          }
+
+          <button type="submit" class="primary-action" [disabled]="finalizations.saveState() !== 'idle' || (plan.requirements?.candidateWindows?.length ?? 0) === 0">
+            {{ finalizations.saveState() === 'submitting' ? 'Finalizing requirements...' : 'Finalize requirements' }}
+          </button>
+        </form>
+
+        @if (finalizations.saveState() === 'network-error') {
+          <section class="command-state" aria-live="assertive" role="alert">
+            <p>The finalization response was not received. Retry the exact same command with the same idempotency key and plan version, or dismiss it before creating a new intent.</p>
+            @if (finalizations.correlationId()) { <p>Correlation ID: {{ finalizations.correlationId() }}</p> }
+            <div class="command-actions">
+              <button type="button" (click)="retryFinalization()">Retry exact finalization</button>
+              <button type="button" (click)="dismissFinalizationError()">Dismiss</button>
+            </div>
+          </section>
+        } @else if (finalizations.saveState() === 'conflict') {
+          <section class="command-state" aria-live="assertive" role="alert">
+            <p>The plan changed after this form was loaded. No finalization was created, and your selected window and deadline are preserved.</p>
+            <button type="button" (click)="refreshFinalizationConflict()">Refresh current plan and history</button>
+          </section>
+        } @else if (finalizations.saveState() === 'error') {
+          <section class="command-state" aria-live="assertive" role="alert">
+            @if (finalizations.problemCode() === 'VALIDATION_FAILED') {
+              <p>The finalization needs the highlighted corrections. The server remains authoritative for deadline validation.</p>
+            } @else if (finalizations.problemCode() === 'FORBIDDEN_ROLE' || finalizations.problemCode() === 'ACCESS_DENIED') {
+              <p>Your current role cannot finalize this plan.</p>
+            } @else if (finalizations.problemCode() === 'PRIVATE_RESOURCE_NOT_FOUND') {
+              <p>This plan is unavailable.</p>
+            } @else if (finalizations.problemCode() === 'INVALID_PLAN_STATE') {
+              <p>The plan no longer allows finalization. Refresh to see its current state.</p>
+            } @else {
+              <p>The requirements could not be finalized. Review the form and try again.</p>
+            }
+            @if (finalizations.correlationId()) { <p>Correlation ID: {{ finalizations.correlationId() }}</p> }
+            <button type="button" (click)="dismissFinalizationError()">Dismiss</button>
+          </section>
+        }
+      }
+
+      <h3>Finalization candidate</h3>
+      @if (finalizations.commandResult() ?? finalizations.selected(); as finalization) {
+        <article class="finalization-snapshot" aria-labelledby="selected-finalization-heading">
+          <h4 id="selected-finalization-heading">{{ finalizations.commandResult() ? 'Immutable finalization command result' : 'Immutable recovered finalization' }}</h4>
+          @if (finalizations.commandResult()) {
+            <p><strong>Command response basis:</strong> Plan version {{ finalization.basisPlanVersion ?? 'unavailable' }}. This exact response is kept separate from current history; the refreshed history below determines whether its basis is still current.</p>
+          } @else {
+            <p><strong>Basis:</strong> Plan version {{ finalization.basisPlanVersion ?? 'unavailable' }}. This basis matches the current plan read.</p>
+          }
+          <dl>
+            <div><dt>Chosen schedule</dt><dd>{{ formatWindow(finalization.selectedStartAt, finalization.timeZone) }} to {{ formatWindow(finalization.selectedEndAt, finalization.timeZone) }}</dd></div>
+            <div><dt>Offer deadline</dt><dd>{{ formatWindow(finalization.offerDeadline, finalization.timeZone) }}</dd></div>
+            <div><dt>Activity</dt><dd>{{ finalization.category ?? 'Unavailable' }}</dd></div>
+            <div><dt>Time zone</dt><dd>{{ finalization.timeZone ?? 'Unavailable' }}</dd></div>
+            <div><dt>Area</dt><dd>{{ finalization.area?.code ?? 'Unavailable' }} @if (finalization.area) { ({{ finalization.area.radiusKm }} km radius) }</dd></div>
+            <div><dt>Group size</dt><dd>{{ finalization.headcount?.minimum ?? 'Unavailable' }} to {{ finalization.headcount?.maximum ?? 'Unavailable' }}</dd></div>
+            @if (finalization.budget; as budget) { <div><dt>Budget</dt><dd>{{ budget.currency }} {{ budget.minimumAmount }} to {{ budget.maximumAmount }}</dd></div> }
+            <div><dt>Current preferences</dt><dd>{{ finalization.currentPreferenceCount ?? 0 }}</dd></div>
+            <div><dt>Stale preferences</dt><dd>{{ finalization.stalePreferenceCount ?? 0 }}</dd></div>
+          </dl>
+          <h4>Must-haves</h4>
+          @if ((finalization.mustHaves?.length ?? 0) > 0) {
+            <ul class="tag-list">@for (mustHave of finalization.mustHaves ?? []; track mustHave) { <li>{{ mustHave }}</li> }</ul>
+          } @else { <p>No must-haves are listed.</p> }
+          @if (finalization.providerSafeNotes) { <h4>Provider-safe notes</h4><p>{{ finalization.providerSafeNotes }}</p> }
+          @if (finalization.categoryAttributes; as attributes) {
+            <h4>Category details</h4>
+            <dl>@for (attribute of attributes | keyvalue; track attribute.key) { <div><dt>{{ attribute.key }}</dt><dd>{{ attributeValue(attribute.value) }}</dd></div> }</dl>
+          }
+          <h4>Warnings to review before publication</h4>
+          @if ((finalization.warnings?.length ?? 0) > 0) {
+            <ul class="warning-list">@for (warning of finalization.warnings ?? []; track warning) { <li>{{ finalizationWarningLabel(warning) }}</li> }</ul>
+          } @else {
+            <p>No aggregate warnings were returned. Publication will still revalidate this finalization on the server.</p>
+          }
+          <p>This immutable snapshot cannot be edited. Warning display does not change its content, and this browser does not assume it is publishable.</p>
+        </article>
+      } @else if (finalizations.historyState() === 'loading' && finalizations.items().length === 0) {
+        <p class="status" role="status">Recovering finalization history...</p>
+      } @else if (finalizations.historyState() === 'error' && finalizations.items().length === 0) {
+        <p>No current candidate could be recovered because finalization history is unavailable.</p>
+      } @else {
+        <p>No finalization exists for the current plan basis. Create one deliberately before publication.</p>
+      }
+
+      <h3>Finalization history</h3>
+      @if (finalizations.historyState() === 'loading') {
+        <p class="status" role="status">{{ finalizations.items().length > 0 ? 'Loading older finalization history...' : 'Refreshing finalization history...' }}</p>
+      } @else if (finalizations.historyState() === 'error') {
+        <section class="history-state" role="alert">
+          <p>{{ finalizations.items().length > 0 ? 'Older finalization history could not be loaded. The rows already shown are unchanged.' : 'Finalization history could not be loaded, so the current basis could not be confirmed.' }}</p>
+          <button type="button" (click)="retryFinalizationHistory()">Retry finalization history</button>
+        </section>
+      }
+      @if (finalizations.items().length === 0 && finalizations.historyState() === 'ready') {
+        <p>No finalization history is available.</p>
+      } @else if (finalizations.items().length > 0) {
+        <ol class="finalization-history">
+          @for (item of finalizations.items(); track item.finalizationId; let index = $index) {
+            <li>
+              <p><strong>{{ finalizationHistoryLabel(item, index) }}</strong></p>
+              <p>Plan version {{ item.basisPlanVersion ?? 'unavailable' }}; chosen start {{ formatWindow(item.selectedStartAt, item.timeZone) }}; deadline {{ formatWindow(item.offerDeadline, item.timeZone) }}.</p>
+            </li>
+          }
+        </ol>
+      }
+      @if (finalizations.nextCursor() && finalizations.historyState() !== 'error') {
+        <button type="button" (click)="loadMoreFinalizations()" [disabled]="finalizations.historyState() === 'loading'">
+          {{ finalizations.historyState() === 'loading' ? 'Loading more history...' : 'Load older finalizations' }}
+        </button>
       }
     </section>
 
