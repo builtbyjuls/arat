@@ -35,3 +35,35 @@ jobs:
 
       - name: Run isolated foundation smoke check
         run: ./scripts/smoke-foundation.sh
+
+  frontend:
+    name: Verify frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: ui
+        run: npm ci
+
+      - name: Lint frontend
+        working-directory: ui
+        run: npm run lint
+
+      - name: Run frontend unit tests
+        working-directory: ui
+        run: npm run test:ci
+
+      - name: Build frontend
+        working-directory: ui
+        run: npm run build

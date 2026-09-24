@@ -25,6 +25,10 @@ Run these commands from this directory:
   directory.
 - `npm run check` runs lint, the covered test suite, and the production build.
 
+The frontend CI job runs the same independent commands from `ui/` in this
+order: `npm ci`, `npm run lint`, `npm run test:ci`, and `npm run build`.
+Frontend verification does not invoke Maven.
+
 Coverage thresholds are currently zero because the scaffold has only a smoke
 test. Every feature card must add focused tests with its production code, and
 the thresholds should increase when the application has enough behavior for a
