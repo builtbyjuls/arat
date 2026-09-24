@@ -5,6 +5,7 @@ import com.builtbyjuls.arat.providers.application.ProviderCreationService;
 import com.builtbyjuls.arat.providers.application.ProviderRestorationService;
 import com.builtbyjuls.arat.providers.application.ProviderSuspensionService;
 import com.builtbyjuls.arat.providers.application.ProviderVerificationDecisionService;
+import com.builtbyjuls.arat.providers.application.ProviderVerificationQueueService;
 import com.builtbyjuls.arat.providers.domain.ProviderVerificationDecision;
 import com.builtbyjuls.arat.web.ApiProblemResponse;
 import com.builtbyjuls.arat.web.CorrelationIdFilter;
@@ -26,11 +27,13 @@ import java.util.UUID;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -41,18 +44,37 @@ public class ProviderOperationsController {
 
     private final CurrentActor currentActor;
     private final ProviderVerificationDecisionService decisionService;
+    private final ProviderVerificationQueueService verificationQueueService;
     private final ProviderSuspensionService suspensionService;
     private final ProviderRestorationService restorationService;
 
     public ProviderOperationsController(
             CurrentActor currentActor,
             ProviderVerificationDecisionService decisionService,
+            ProviderVerificationQueueService verificationQueueService,
             ProviderSuspensionService suspensionService,
             ProviderRestorationService restorationService) {
         this.currentActor = currentActor;
         this.decisionService = decisionService;
+        this.verificationQueueService = verificationQueueService;
         this.suspensionService = suspensionService;
         this.restorationService = restorationService;
+    }
+
+    @GetMapping("/pending-verifications")
+    @Operation(operationId = "listPendingProviderVerifications", summary = "List pending provider verifications")
+    @SecurityRequirement(name = "bearerAuth")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Pending provider verification page", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = PendingProviderVerificationPageRepresentation.class))),
+        @ApiResponse(responseCode = "400", description = "Invalid cursor or limit", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "401", description = "Authentication required", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class))),
+        @ApiResponse(responseCode = "403", description = "Platform operator role required", content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ApiProblemResponse.class)))
+    })
+    public PendingProviderVerificationPageRepresentation listPendingVerifications(
+            @RequestParam(required = false) String cursor,
+            @RequestParam(required = false) Integer limit) {
+        var actor = currentActor.requireAuthenticatedActor();
+        return verificationQueueService.list(actor.accountId(), actor.platformRoles(), cursor, limit);
     }
 
     @PostMapping("/{providerId}/verification-decisions")

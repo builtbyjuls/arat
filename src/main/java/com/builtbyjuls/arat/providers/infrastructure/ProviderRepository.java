@@ -2,6 +2,7 @@ package com.builtbyjuls.arat.providers.infrastructure;
 
 import com.builtbyjuls.arat.providers.api.ProviderEligibilityCandidate;
 import com.builtbyjuls.arat.providers.api.ProviderEligibilityCriteria;
+import com.builtbyjuls.arat.providers.domain.PendingProviderVerification;
 import com.builtbyjuls.arat.providers.domain.ProviderCategory;
 import com.builtbyjuls.arat.providers.domain.ProviderOrganization;
 import com.builtbyjuls.arat.providers.domain.ProviderOrganizationStatus;
@@ -196,6 +197,84 @@ public class ProviderRepository {
                         """)
                 .param("providerId", providerId)
                 .query((resultSet, rowNum) -> resultSet.getString("area_code"))
+                .list();
+    }
+
+    @Transactional(readOnly = true)
+    public List<PendingProviderVerification> listPendingVerificationPage(int limit) {
+        return jdbcClient.sql("""
+                        SELECT submission.submission_id, submission.provider_id,
+                               organization.version AS provider_version, organization.display_name,
+                               organization.verification_status, submission.submitted_at,
+                               ARRAY(
+                                   SELECT category
+                                   FROM provider_supported_category
+                                   WHERE provider_id = submission.provider_id
+                                   ORDER BY category
+                               ) AS supported_categories,
+                               ARRAY(
+                                   SELECT area_code
+                                   FROM provider_service_area
+                                   WHERE provider_id = submission.provider_id
+                                   ORDER BY area_code
+                               ) AS service_area_codes,
+                               ARRAY(
+                                   SELECT evidence_reference
+                                   FROM provider_verification_evidence_reference
+                                   WHERE submission_id = submission.submission_id
+                                   ORDER BY sort_order
+                               ) AS evidence_references
+                        FROM provider_verification_submission submission
+                        JOIN provider_organization organization
+                          ON organization.provider_id = submission.provider_id
+                        WHERE organization.verification_status = 'PENDING'
+                          AND organization.current_verification_submission_id = submission.submission_id
+                        ORDER BY submission.submitted_at DESC, submission.submission_id DESC
+                        LIMIT :limit
+                        """)
+                .param("limit", limit)
+                .query(this::mapPendingVerification)
+                .list();
+    }
+
+    @Transactional(readOnly = true)
+    public List<PendingProviderVerification> listPendingVerificationPage(
+            OffsetDateTime submittedAt, UUID submissionId, int limit) {
+        return jdbcClient.sql("""
+                        SELECT submission.submission_id, submission.provider_id,
+                               organization.version AS provider_version, organization.display_name,
+                               organization.verification_status, submission.submitted_at,
+                               ARRAY(
+                                   SELECT category
+                                   FROM provider_supported_category
+                                   WHERE provider_id = submission.provider_id
+                                   ORDER BY category
+                               ) AS supported_categories,
+                               ARRAY(
+                                   SELECT area_code
+                                   FROM provider_service_area
+                                   WHERE provider_id = submission.provider_id
+                                   ORDER BY area_code
+                               ) AS service_area_codes,
+                               ARRAY(
+                                   SELECT evidence_reference
+                                   FROM provider_verification_evidence_reference
+                                   WHERE submission_id = submission.submission_id
+                                   ORDER BY sort_order
+                               ) AS evidence_references
+                        FROM provider_verification_submission submission
+                        JOIN provider_organization organization
+                          ON organization.provider_id = submission.provider_id
+                        WHERE organization.verification_status = 'PENDING'
+                          AND organization.current_verification_submission_id = submission.submission_id
+                          AND (submission.submitted_at, submission.submission_id) < (:submittedAt, :submissionId)
+                        ORDER BY submission.submitted_at DESC, submission.submission_id DESC
+                        LIMIT :limit
+                        """)
+                .param("submittedAt", submittedAt)
+                .param("submissionId", submissionId)
+                .param("limit", limit)
+                .query(this::mapPendingVerification)
                 .list();
     }
 
@@ -498,6 +577,19 @@ public class ProviderRepository {
                 ProviderStaffStatus.valueOf(resultSet.getString("status")),
                 resultSet.getObject("joined_at", OffsetDateTime.class),
                 resultSet.getObject("removed_at", OffsetDateTime.class));
+    }
+
+    private PendingProviderVerification mapPendingVerification(ResultSet resultSet, int rowNum) throws SQLException {
+        return new PendingProviderVerification(
+                resultSet.getObject("submission_id", UUID.class),
+                resultSet.getObject("provider_id", UUID.class),
+                resultSet.getLong("provider_version"),
+                resultSet.getString("display_name"),
+                ProviderVerificationStatus.valueOf(resultSet.getString("verification_status")),
+                textArray(resultSet, "supported_categories").stream().map(ProviderCategory::valueOf).toList(),
+                textArray(resultSet, "service_area_codes"),
+                resultSet.getObject("submitted_at", OffsetDateTime.class),
+                textArray(resultSet, "evidence_references"));
     }
 
     private List<String> textArray(ResultSet resultSet, String column) throws SQLException {

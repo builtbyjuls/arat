@@ -553,6 +553,32 @@ resubmission:
 }
 ~~~
 
+Platform operators discover exact current submissions through:
+
+~~~http
+GET /api/v1/operations/providers/pending-verifications?cursor=...&limit=...
+~~~
+
+Each item contains the submission ID, provider ID and current version, display
+name, `PENDING` status, supported categories, service-area codes, database
+submission time, and ordered evidence references. It excludes staff identities,
+eligibility internals, decisions, audit, and idempotency data. Evidence
+references are opaque plain text and must not be fetched or interpreted as
+links.
+
+The queue orders by `(submitted_at DESC, submission_id DESC)`, defaults to 20
+items, allows at most 100, and returns `{items, nextCursor}`. Its opaque,
+versioned Base64url cursor is bound to the authenticated operator account.
+Malformed, unsupported, actor-mismatched cursors and invalid limits return `400
+INVALID_CURSOR`. An authenticated caller without `PLATFORM_OPERATOR` receives
+`403 FORBIDDEN_PLATFORM_ROLE` before cursor validation or row access.
+
+Only submissions that are both the provider's exact current submission and in
+`PENDING` provider state are returned. Superseded and decided submissions are
+excluded by the database query. A read grants no decision authority; the
+existing locked provider state and exact submission ID remain the decision
+fence.
+
 ### Finalize requirements
 
 ~~~http
@@ -774,10 +800,10 @@ subscription commands use keys when that deferred extension exists.
 
 ## UI1 discovery additions
 
-The [Mobile Web Client Contract](web-client.md#required-discovery-reads-planned)
-defines the reload-safe read gaps and the operator queue. `GET /api/v1/groups`,
-`GET /api/v1/providers`, and finalization history are implemented; the operator
-queue remains planned before its client screen depends on it:
+The [Mobile Web Client Contract](web-client.md#required-discovery-reads)
+defines the reload-safe reads and operator queue. `GET /api/v1/groups`, `GET
+/api/v1/providers`, finalization history, and the operator queue are
+implemented:
 
 - `GET /api/v1/operations/providers/pending-verifications`: operator-only exact
   current submissions with bounded provider summary and evidence references.
@@ -1051,6 +1077,7 @@ implemented:
 
 ~~~http
 POST /api/v1/providers/{providerId}/verification-submissions
+GET /api/v1/operations/providers/pending-verifications
 POST /api/v1/operations/providers/{providerId}/verification-decisions
 POST /api/v1/operations/providers/{providerId}/suspension
 POST /api/v1/operations/providers/{providerId}/restoration

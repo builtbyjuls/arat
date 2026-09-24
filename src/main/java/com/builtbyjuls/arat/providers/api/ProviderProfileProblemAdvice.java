@@ -85,6 +85,19 @@ class ProviderProfileProblemAdvice {
         }
     }
 
+    @ExceptionHandler(ProviderVerificationQueueException.class)
+    void verificationQueueFailure(
+            ProviderVerificationQueueException exception,
+            HttpServletRequest request,
+            HttpServletResponse response) throws IOException {
+        switch (exception.reason()) {
+            case FORBIDDEN_PLATFORM_ROLE -> write(request, response, HttpStatus.FORBIDDEN,
+                    "FORBIDDEN_PLATFORM_ROLE", "Forbidden platform role", "A platform operator role is required.");
+            case INVALID_CURSOR -> write(request, response, HttpStatus.BAD_REQUEST,
+                    "INVALID_CURSOR", "Invalid cursor", "The cursor is invalid.");
+        }
+    }
+
     @ExceptionHandler(ProviderSuspensionException.class)
     void suspensionFailure(
             ProviderSuspensionException exception,

@@ -1,6 +1,7 @@
 # Mobile Web Client Contract
 
-Status: UI1 decisions accepted; client and supporting discovery reads are in progress.
+Status: UI1 decisions accepted; supporting discovery reads are implemented and
+the client is in progress.
 M0-M2 backend behavior is implemented. UI1 precedes M3 without renumbering it.
 This is a focused demonstration client, not a production-ready identity or
 frontend platform, and it is a responsive web application, not a native app.
@@ -173,18 +174,17 @@ ACTIVE recipient, and captured/current eligibility equality are required.
 Restoration never revives an old grant. A platform operator role does not imply
 provider staff or private group membership.
 
-## Required discovery reads (planned)
+## Required discovery reads
 
-The remaining reload-safe gap and operator queue must be implemented before
-their screens depend on them. They belong to the existing owning modules and
-must not query foreign module tables directly.
+The reload-safe reads and operator queue are implemented in their owning
+modules without querying foreign module tables directly.
 
 | Read | Required projection and privacy |
 | --- | --- |
 | `GET /api/v1/groups` | Implemented: compact groups and caller's scoped role for ACTIVE membership only; no public search, inactive history, plan data, or foreign actor filter |
 | `GET /api/v1/providers` | Implemented: provider ID, display name, verification status, version, caller staff role, categories and service areas for active staff only; staff-private provider detail also exposes `callerStaffRole` for direct reloads |
 | `GET /api/v1/plans/{planId}/requirement-finalizations` | Implemented: existing immutable finalization representation plus `currentBasis`; active group members only, same private 404 as plan reads; no preference bodies, recipients, audit, or outbox data |
-| `GET /api/v1/operations/providers/pending-verifications` | PLATFORM_OPERATOR only; exact current submission ID, provider ID/version, bounded safe provider summary, submission time and ordered evidence references; exclude superseded/decided submissions |
+| `GET /api/v1/operations/providers/pending-verifications` | Implemented: PLATFORM_OPERATOR only; exact current submission ID, provider ID/version, display name, PENDING status, categories, service areas, submission time and ordered evidence references; excludes superseded/decided submissions |
 
 Use `{items, nextCursor}`, default limit 20 and maximum 100, and stable opaque
 versioned cursors scoped to the actor/context. Group/provider indexes order by
