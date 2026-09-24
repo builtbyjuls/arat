@@ -183,10 +183,11 @@ better-quality group requests.
 Normal M0 through M2 development and verification need Docker but no AWS account,
 cloud credentials, Floci, Mailpit, or paid service. Docker runs PostgreSQL for
 host-run application development and Testcontainers tests; the full Compose
-stack also runs the application and Prometheus.
+stack also runs the application, same-origin web client, and Prometheus.
 
 | Planned local component | Possible future AWS equivalent |
 | --- | --- |
+| Angular static web container | CDN or another static web runtime |
 | Spring Boot container | ECS/Fargate or another container runtime |
 | PostgreSQL container | RDS PostgreSQL or Aurora PostgreSQL |
 | Floci SQS and DLQ | Amazon SQS and DLQ |
@@ -322,7 +323,8 @@ does not implement a relay, queue, email rendering, or notification delivery.
 
 ### Full Compose stack
 
-Start PostgreSQL, the application, and Prometheus together:
+Start PostgreSQL, the application, the local-demo web client, and Prometheus
+together:
 
 ~~~bash
 docker compose up --build --wait
@@ -330,6 +332,7 @@ docker compose up --build --wait
 
 Service URLs are:
 
+- Web client and same-origin API proxy: `http://127.0.0.1:4200`
 - Application: `http://127.0.0.1:8080`
 - Liveness: `http://127.0.0.1:8080/actuator/health/liveness`
 - Readiness: `http://127.0.0.1:8080/actuator/health/readiness`
@@ -347,7 +350,8 @@ curl -H 'Authorization: Bearer arat-local-owner-token' \
 Override ports for an isolated local run:
 
 ~~~bash
-ARAT_APP_PORT=18080 ARAT_POSTGRES_PORT=15432 docker compose up --build --wait
+ARAT_WEB_PORT=14200 ARAT_APP_PORT=18080 ARAT_POSTGRES_PORT=15432 \
+  docker compose up --build --wait
 ~~~
 
 The Compose defaults use the deliberately fake `arat` PostgreSQL username and
@@ -374,4 +378,11 @@ or its volumes, run the isolated smoke check from the repository root:
 
 ~~~bash
 scripts/smoke-foundation.sh
+~~~
+
+Verify the optimized local-demo web image, SPA fallback, same-origin API proxy,
+non-root runtime, token-safe proxy logging, and isolated cleanup with:
+
+~~~bash
+scripts/smoke-ui.sh
 ~~~

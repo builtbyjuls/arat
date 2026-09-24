@@ -30,6 +30,23 @@ services:
       - "127.0.0.1:${ARAT_APP_PORT:-8080}:8080"
     restart: on-failure
 
+  web:
+    build:
+      context: ./ui
+      args:
+        ANGULAR_CONFIGURATION: local-demo
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${ARAT_WEB_PORT:-4200}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8080/"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    restart: on-failure
+
   prometheus:
     image: prom/prometheus:v3.14.0
     command:

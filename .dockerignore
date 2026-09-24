@@ -14,6 +14,10 @@ AGENTS.md
 CLAUDE.md
 target
 **/target
+ui/node_modules
+ui/dist
+ui/coverage
+ui/.angular
 reports
 **/reports
 test-reports

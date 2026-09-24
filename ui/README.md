@@ -12,6 +12,32 @@ server with npm start.
 The development server proxies /api and /v3 to the local backend at
 http://localhost:8080. The proxy is not used by production builds.
 
+## Containerized local demo
+
+From the repository root, start the same-origin local-demo web path with:
+
+```text
+docker compose up --build --wait web
+```
+
+Open `http://127.0.0.1:4200`. The non-root web container serves the optimized
+Angular build and proxies `/api` and `/v3` to the Spring service without CORS.
+Set `ARAT_WEB_PORT` to change the loopback host port.
+
+The web Dockerfile defaults to the production Angular configuration, which
+excludes fake tokens and the local actor selector. Compose explicitly selects
+`local-demo`; it is for local demonstration only and is not an Internet
+deployment or production identity mechanism. Build the production-safe image
+directly with:
+
+```text
+docker build --tag arat-ui:production ui
+```
+
+Run `scripts/smoke-ui.sh` from the repository root for the isolated web smoke
+check. It uses a unique Compose project and removes its containers, network,
+volumes, and local images on both success and failure.
+
 ## API types
 
 `openapi/arat-v1.json` is the reviewed M0-M2 contract snapshot. It is exported

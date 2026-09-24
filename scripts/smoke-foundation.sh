@@ -139,7 +139,7 @@ check_prometheus_target_health() {
 
 created_project=true
 echo "Starting isolated smoke project $project_name."
-compose up --build --wait --wait-timeout "$deadline_seconds"
+compose up --build --wait --wait-timeout "$deadline_seconds" postgres app prometheus
 
 app_port=$(http_port app 8080)
 prometheus_port=$(http_port prometheus 9090)
