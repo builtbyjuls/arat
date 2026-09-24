@@ -9,6 +9,59 @@
     </button>
   </div>
 
+  <section class="create-group" aria-labelledby="create-group-heading">
+    <h2 id="create-group-heading">Create a group</h2>
+    <form [formGroup]="createForm" (ngSubmit)="submitCreate()">
+      <div class="field">
+        <label for="group-name">Group name</label>
+        <input id="group-name" type="text" formControlName="name" maxlength="80" [attr.aria-describedby]="createForm.controls.name.touched && createForm.controls.name.invalid || groupCreation.violationFor('name') ? 'group-name-hint group-name-error' : 'group-name-hint'">
+        <p id="group-name-hint">Use 1 to 80 characters.</p>
+        @if (createForm.controls.name.touched && createForm.controls.name.invalid) {
+          <p id="group-name-error" class="field-error">Enter a group name of at most 80 characters.</p>
+        } @else if (groupCreation.violationFor('name'); as violation) {
+          <p id="group-name-error" class="field-error">{{ violation }}</p>
+        }
+      </div>
+      <div class="field">
+        <label for="group-description">Description (optional)</label>
+        <textarea id="group-description" formControlName="description" maxlength="500" [attr.aria-describedby]="createForm.controls.description.touched && createForm.controls.description.invalid || groupCreation.violationFor('description') ? 'group-description-hint group-description-error' : 'group-description-hint'"></textarea>
+        <p id="group-description-hint">Use up to 500 characters.</p>
+        @if (createForm.controls.description.touched && createForm.controls.description.invalid) {
+          <p id="group-description-error" class="field-error">Use a description of at most 500 characters.</p>
+        } @else if (groupCreation.violationFor('description'); as violation) {
+          <p id="group-description-error" class="field-error">{{ violation }}</p>
+        }
+      </div>
+      <button type="submit" [disabled]="groupCreation.state() === 'submitting'">
+        {{ groupCreation.state() === 'submitting' ? 'Creating group...' : 'Create group' }}
+      </button>
+    </form>
+    @if (groupCreation.state() === 'network-error') {
+      <section class="command-state" aria-live="assertive" role="alert">
+        <p>Group creation could not reach the server. Retry to send the same request.</p>
+        @if (groupCreation.correlationId()) {
+          <p>Correlation ID: {{ groupCreation.correlationId() }}</p>
+        }
+        <button type="button" (click)="retryCreate()">Retry creation</button>
+        <button type="button" (click)="dismissCreateError()">Start over</button>
+      </section>
+    } @else if (groupCreation.state() === 'error') {
+      <section class="command-state" aria-live="assertive" role="alert">
+        @if (groupCreation.problemCode() === 'IDEMPOTENCY_KEY_REUSED') {
+          <p>This creation request conflicts with a previously used idempotency key. Start over with a new request.</p>
+        } @else if (groupCreation.problemCode() === 'VALIDATION_FAILED') {
+          <p>Group creation needs the highlighted corrections.</p>
+        } @else {
+          <p>Group creation could not be completed. Check the form and try again.</p>
+        }
+        @if (groupCreation.correlationId()) {
+          <p>Correlation ID: {{ groupCreation.correlationId() }}</p>
+        }
+        <button type="button" (click)="dismissCreateError()">Dismiss</button>
+      </section>
+    }
+  </section>
+
   @if (groupIndex.state() === 'loading') {
     <p class="status" role="status">Loading your groups...</p>
   } @else if (groupIndex.state() === 'error' && groupIndex.groups().length === 0) {

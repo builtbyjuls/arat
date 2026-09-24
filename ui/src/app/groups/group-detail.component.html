@@ -1,0 +1,49 @@
+<section aria-labelledby="group-heading">
+  @if (groupDetail.state() === 'loading') {
+    <h1 id="group-heading" data-route-heading tabindex="-1">Loading group...</h1>
+    <p class="status" role="status">Loading this private group...</p>
+  } @else if (groupDetail.state() === 'not-found') {
+    <h1 id="group-heading" data-route-heading tabindex="-1">Group unavailable</h1>
+    <section class="state" aria-live="assertive" role="alert">
+      <p>This group is unavailable.</p>
+      <a routerLink="/groups">Return to your groups</a>
+    </section>
+  } @else if (groupDetail.state() === 'error') {
+    <h1 id="group-heading" data-route-heading tabindex="-1">Group unavailable</h1>
+    <section class="state" aria-live="assertive" role="alert">
+      <p>This group could not be loaded. Try again.</p>
+      @if (groupDetail.correlationId()) {
+        <p>Correlation ID: {{ groupDetail.correlationId() }}</p>
+      }
+      <button type="button" (click)="reload()">Reload group</button>
+      <a routerLink="/groups">Return to your groups</a>
+    </section>
+  } @else if (groupDetail.group(); as group) {
+    <div class="heading-row">
+      <div>
+        <h1 id="group-heading" data-route-heading tabindex="-1">{{ group.name }}</h1>
+        @if (group.description) {
+          <p>{{ group.description }}</p>
+        }
+        @if (groupDetail.callerRole(); as role) {
+          <p class="role-label">Your role: {{ role === 'ORGANIZER' ? 'Organizer' : 'Member' }}</p>
+        }
+      </div>
+      <button type="button" (click)="reload()">Reload group</button>
+    </div>
+
+    <section class="members" aria-labelledby="members-heading">
+      <h2 id="members-heading">Members</h2>
+      <ul>
+        @for (member of group.members; track member.accountId) {
+          <li>
+            <span>{{ member.displayName }}</span>
+            <span class="role-label">{{ member.role === 'ORGANIZER' ? 'Organizer' : 'Member' }}</span>
+          </li>
+        }
+      </ul>
+    </section>
+
+    <a class="plans-link" [routerLink]="['/groups', group.groupId, 'plans']">View plans</a>
+  }
+</section>
