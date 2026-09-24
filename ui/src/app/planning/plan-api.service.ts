@@ -25,6 +25,8 @@ export type RequirementFinalization = components['schemas']['RequirementFinaliza
 export type RequirementFinalizationPage = components['schemas']['RequirementFinalizationPageRepresentation'];
 export type PublishRequest = components['schemas']['PublishRequest'];
 export type PublishedRequest = components['schemas']['PublishedRequestRepresentation'];
+export type GroupPublishedRequest = components['schemas']['GroupPublishedRequestRepresentation'];
+export type PublishedRequestPage = components['schemas']['PublishedRequestPageRepresentation'];
 
 const PLAN_PAGE_LIMIT = 20;
 
@@ -128,6 +130,35 @@ export class PlanApi {
     intent: IdempotentMutationIntent<PublishRequest>,
   ): Observable<ApiHttpResult<PublishedRequest>> {
     return this.#api.executeIdempotent<PublishedRequest, PublishRequest>(intent);
+  }
+
+  readCurrentPublishedRequest(planId: string): Observable<ApiHttpResult<GroupPublishedRequest>> {
+    return this.#api.read<GroupPublishedRequest>(
+      `/plans/${encodeURIComponent(planId)}/published-requests/current`,
+    );
+  }
+
+  listPublishedRequestHistory(
+    planId: string,
+    cursor: string | null = null,
+  ): Observable<ApiHttpResult<PublishedRequestPage>> {
+    let params = new HttpParams().set('limit', PLAN_PAGE_LIMIT);
+    if (cursor !== null) {
+      params = params.set('cursor', cursor);
+    }
+    return this.#api.read<PublishedRequestPage>(
+      `/plans/${encodeURIComponent(planId)}/published-requests`,
+      params,
+    );
+  }
+
+  readPublishedRequest(
+    planId: string,
+    requestId: string,
+  ): Observable<ApiHttpResult<GroupPublishedRequest>> {
+    return this.#api.read<GroupPublishedRequest>(
+      `/plans/${encodeURIComponent(planId)}/published-requests/${encodeURIComponent(requestId)}`,
+    );
   }
 
   createIntent(

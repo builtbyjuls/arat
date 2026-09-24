@@ -528,6 +528,99 @@
       }
     </section>
 
+    <section class="detail-card request-history" aria-labelledby="request-history-heading">
+      <h2 id="request-history-heading">Provider request history</h2>
+      <p>These immutable snapshots are display-only. Current lifecycle status is read separately from the server.</p>
+
+      <h3>Current provider request</h3>
+      @if (requests.currentState() === 'loading') {
+        <p class="status" role="status">Loading the current provider request...</p>
+      } @else if (requests.current(); as request) {
+        <article class="request-snapshot" aria-labelledby="current-request-heading">
+          <h4 id="current-request-heading">Current version {{ request.requestVersion ?? 'Unavailable' }}</h4>
+          <p><strong>Lifecycle:</strong> {{ publicationStateLabel(request.state) }}. <strong>Actionable now:</strong> {{ request.actionable === true ? 'Yes' : 'No' }}.</p>
+          <dl>
+            <div><dt>Published</dt><dd>{{ formatWindow(request.publishedAt, request.timeZone) }}</dd></div>
+            <div><dt>Chosen schedule</dt><dd>{{ formatWindow(request.requestedWindow?.startAt, request.timeZone) }} to {{ formatWindow(request.requestedWindow?.endAt, request.timeZone) }}</dd></div>
+            <div><dt>Offer deadline</dt><dd>{{ formatWindow(request.offerDeadline, request.timeZone) }}</dd></div>
+            @if (request.closedAt) { <div><dt>Terminal time</dt><dd>{{ formatWindow(request.closedAt, request.timeZone) }}</dd></div> }
+          </dl>
+        </article>
+      } @else if (requests.currentState() === 'absent') {
+        <p>No current provider request is available for this plan.</p>
+      } @else {
+        <section class="history-state" role="alert">
+          <p>The current provider request could not be loaded.</p>
+          <button type="button" (click)="refresh()">Refresh plan</button>
+        </section>
+      }
+
+      <h3>All request versions</h3>
+      @if (requests.historyState() === 'loading') {
+        <p class="status" role="status">{{ requests.items().length > 0 ? 'Loading older provider request history...' : 'Loading provider request history...' }}</p>
+      } @else if (requests.historyState() === 'error') {
+        <section class="history-state" role="alert">
+          <p>{{ requests.items().length > 0 ? 'Older provider request history could not be loaded. The versions already shown are unchanged.' : 'Provider request history could not be loaded.' }}</p>
+          <button type="button" (click)="retryRequestHistory()">Retry provider request history</button>
+        </section>
+      }
+      @if (requests.items().length === 0 && requests.historyState() === 'ready') {
+        <p>No provider request history is available.</p>
+      } @else if (requests.items().length > 0) {
+        <ol class="request-version-list">
+          @for (request of requests.items(); track request.requestId) {
+            <li>
+              <p><strong>{{ requestHistoryLabel(request.requestId) }}</strong></p>
+              <p>Version {{ request.requestVersion ?? 'Unavailable' }}: {{ publicationStateLabel(request.state) }}; published {{ formatWindow(request.publishedAt, request.timeZone) }}.</p>
+              @if (request.requestId) {
+                <a [routerLink]="['/plans', plan.planId]" [queryParams]="{ requestId: request.requestId }">Read version {{ request.requestVersion ?? 'details' }}</a>
+              }
+            </li>
+          }
+        </ol>
+      }
+      @if (requests.nextCursor() && requests.historyState() !== 'error') {
+        <button type="button" (click)="loadMoreRequestHistory()" [disabled]="requests.historyState() === 'loading'">
+          {{ requests.historyState() === 'loading' ? 'Loading more history...' : 'Load older request versions' }}
+        </button>
+      }
+
+      @if (requests.detailRequestId()) {
+        <section class="request-detail" aria-labelledby="request-detail-heading">
+          <h3 id="request-detail-heading">Requested version detail</h3>
+          @if (requests.detailState() === 'loading') {
+            <p class="status" role="status">Loading this immutable request version...</p>
+          } @else if (requests.detail(); as request) {
+            <article class="request-snapshot">
+              <h4>Version {{ request.requestVersion ?? 'Unavailable' }} - {{ requestHistoryLabel(request.requestId) }}</h4>
+              <p><strong>Lifecycle:</strong> {{ publicationStateLabel(request.state) }}. <strong>Actionable at this server read:</strong> {{ request.actionable === true ? 'Yes' : 'No' }}.</p>
+              <dl>
+                <div><dt>Activity</dt><dd>{{ request.category ?? 'Unavailable' }}</dd></div>
+                <div><dt>Time zone</dt><dd>{{ request.timeZone ?? 'Unavailable' }}</dd></div>
+                <div><dt>Area</dt><dd>{{ request.area?.code ?? 'Unavailable' }} @if (request.area) { ({{ request.area.radiusKm }} km radius) }</dd></div>
+                <div><dt>Group size</dt><dd>{{ request.headcount?.minimum ?? 'Unavailable' }} to {{ request.headcount?.maximum ?? 'Unavailable' }}</dd></div>
+                <div><dt>Published</dt><dd>{{ formatWindow(request.publishedAt, request.timeZone) }}</dd></div>
+                <div><dt>Chosen schedule</dt><dd>{{ formatWindow(request.requestedWindow?.startAt, request.timeZone) }} to {{ formatWindow(request.requestedWindow?.endAt, request.timeZone) }}</dd></div>
+                <div><dt>Offer deadline</dt><dd>{{ formatWindow(request.offerDeadline, request.timeZone) }}</dd></div>
+                @if (request.closedAt) { <div><dt>Terminal time</dt><dd>{{ formatWindow(request.closedAt, request.timeZone) }}</dd></div> }
+                @if (request.budget; as budget) { <div><dt>Budget</dt><dd>{{ budget.currency }} {{ budget.minimumAmount }} to {{ budget.maximumAmount }}</dd></div> }
+              </dl>
+              <h5>Must-haves</h5>
+              @if ((request.mustHaves?.length ?? 0) > 0) { <ul class="tag-list">@for (mustHave of request.mustHaves ?? []; track mustHave) { <li>{{ mustHave }}</li> }</ul> } @else { <p>No must-haves are listed.</p> }
+              @if (request.providerSafeNotes) { <h5>Provider-safe notes</h5><p>{{ request.providerSafeNotes }}</p> }
+              @if (request.categoryAttributes; as attributes) { <h5>Category details</h5><dl>@for (attribute of attributes | keyvalue; track attribute.key) { <div><dt>{{ attribute.key }}</dt><dd>{{ attributeValue(attribute.value) }}</dd></div> }</dl> }
+              <p>This historical snapshot cannot be changed from this view.</p>
+            </article>
+          } @else {
+            <section class="history-state" role="alert">
+              <p>This request version is unavailable.</p>
+              <a [routerLink]="['/plans', plan.planId]">Return to request history</a>
+            </section>
+          }
+        </section>
+      }
+    </section>
+
     <section class="detail-card" aria-labelledby="actions-heading">
       <h2 id="actions-heading">Action availability</h2>
       <p>{{ actionGuidance(plan.state) }}</p>

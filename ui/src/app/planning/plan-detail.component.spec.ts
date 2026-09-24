@@ -9,9 +9,77 @@ import { PlanRequirementEditService } from './plan-requirement-edit.service';
 import { PlanPreferenceService } from './plan-preference.service';
 import { PlanFinalizationService } from './plan-finalization.service';
 import { PlanPublicationService } from './plan-publication.service';
+import { PlanRequestHistoryService } from './plan-request-history.service';
 import { ActorScopeResetService } from '../identity/actor-scope-reset.service';
 
 describe('PlanDetailComponent', () => {
+  it.each(['OPEN', 'SUPERSEDED', 'CLOSED', 'CANCELLED'])('labels %s request versions and preserves server current status', async (state) => {
+    const requests = fakeRequests();
+    requests.current.set(request('request-current', 2, 'OPEN'));
+    requests.items.set([request(`request-${state}`, 1, state)]);
+    const fixture = await createComponent(fakeDetail('ready'), fakeEdit(), fakePreferences(), true, fakeFinalizations(), fakePublications(), requests);
+
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain(state === 'OPEN' ? 'Open' : `${state.slice(0, 1)}${state.slice(1).toLowerCase()}`);
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Historical version');
+  });
+
+  it('shows the server-empty current state and a paged history retry without inferring current from history', async () => {
+    const requests = fakeRequests();
+    requests.currentState.set('absent');
+    requests.items.set([request('request-history', 3, 'CLOSED')]);
+    requests.nextCursor.set('older-page');
+    requests.historyState.set('error');
+    const fixture = await createComponent(fakeDetail('ready'), fakeEdit(), fakePreferences(), true, fakeFinalizations(), fakePublications(), requests);
+    const root = fixture.nativeElement as HTMLElement;
+
+    expect(root.textContent).toContain('No current provider request is available for this plan.');
+    expect(root.textContent).toContain('Older provider request history could not be loaded.');
+    Array.from(root.querySelectorAll('button')).find((button) => button.textContent?.includes('Retry provider request history'))?.click();
+    await fixture.whenStable();
+
+    expect(requests.loadMore).toHaveBeenCalledWith('plan-1');
+  });
+
+  it('renders an exact request version loaded from a copied query deep link', async () => {
+    const requests = fakeRequests();
+    requests.detailRequestId.set('request-1');
+    requests.detailState.set('ready');
+    requests.detail.set(request('request-1', 1, 'CANCELLED'));
+    const fixture = await createComponent(fakeDetail('ready'), fakeEdit(), fakePreferences(), true, fakeFinalizations(), fakePublications(), requests);
+
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Requested version detail');
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Version 1 - Historical version');
+  });
+
+  it('discards the plan when request history proves access was revoked', async () => {
+    const requests = fakeRequests();
+    requests.nextCursor.set('older-page');
+    requests.loadMore.mockImplementation(async () => { requests.historyProblemCode.set('PRIVATE_RESOURCE_NOT_FOUND'); });
+    const detail = fakeDetail('ready');
+    const fixture = await createComponent(detail, fakeEdit(), fakePreferences(), true, fakeFinalizations(), fakePublications(), requests);
+    fixture.componentInstance.loadMoreRequestHistory();
+    await fixture.whenStable();
+
+    expect(detail.discardInaccessiblePlan).toHaveBeenCalledWith('plan-1');
+  });
+
+  it('does not start an obsolete request read after actor change during finalization loading', async () => {
+    let completeFinalizations!: () => void;
+    const finalizations = fakeFinalizations();
+    finalizations.load.mockImplementation(() => new Promise<void>((resolve) => { completeFinalizations = resolve; }));
+    const requests = fakeRequests();
+    const fixture = await createComponent(
+      fakeDetail('ready'), fakeEdit(), fakePreferences(), false, finalizations, fakePublications(), requests,
+    );
+    await Promise.resolve();
+
+    TestBed.inject(ActorScopeResetService).reset();
+    completeFinalizations();
+    await fixture.whenStable();
+
+    expect(requests.load).not.toHaveBeenCalled();
+  });
+
   it('renders a private unavailable state without raw problem details', async () => {
     const fixture = await createComponent(fakeDetail('not-found'));
 
@@ -619,17 +687,19 @@ async function createComponent(
   awaitStable = true,
   finalizations = fakeFinalizations(),
   publications = fakePublications(),
+  requests = fakeRequests(),
 ) {
   await TestBed.configureTestingModule({
     imports: [PlanDetailComponent],
     providers: [
       provideRouter([{ path: 'plans/:planId', component: PlanDetailComponent }]),
-      { provide: ActivatedRoute, useValue: { paramMap: of(convertToParamMap({ planId: 'plan-1' })), snapshot: { paramMap: convertToParamMap({ planId: 'plan-1' }) } } },
+      { provide: ActivatedRoute, useValue: { paramMap: of(convertToParamMap({ planId: 'plan-1' })), queryParamMap: of(convertToParamMap({})), snapshot: { paramMap: convertToParamMap({ planId: 'plan-1' }) } } },
       { provide: PlanDetailService, useValue: detail },
       { provide: PlanRequirementEditService, useValue: edit },
       { provide: PlanPreferenceService, useValue: preferences },
       { provide: PlanFinalizationService, useValue: finalizations },
       { provide: PlanPublicationService, useValue: publications },
+      { provide: PlanRequestHistoryService, useValue: requests },
     ],
   }).compileComponents();
   const fixture = TestBed.createComponent(PlanDetailComponent);
@@ -659,6 +729,37 @@ function fakePublications() {
       problemCode.set(null);
       result.set(null);
     }),
+  };
+}
+
+function fakeRequests() {
+  return {
+    current: signal<Record<string, unknown> | null>(null),
+    currentState: signal<'absent' | 'error' | 'loading' | 'ready'>('ready'),
+    items: signal<readonly Record<string, unknown>[]>([]),
+    historyState: signal<'absent' | 'error' | 'loading' | 'ready'>('ready'),
+    historyProblemCode: signal<string | null>(null),
+    nextCursor: signal<string | null>(null),
+    detail: signal<Record<string, unknown> | null>(null),
+    detailRequestId: signal<string | null>(null),
+    detailState: signal<'absent' | 'error' | 'loading' | 'ready'>('absent'),
+    detailProblemCode: signal<string | null>(null),
+    usePlan: vi.fn(),
+    releasePlan: vi.fn(),
+    load: vi.fn().mockResolvedValue(undefined),
+    refreshHistory: vi.fn().mockResolvedValue(undefined),
+    loadMore: vi.fn().mockResolvedValue(undefined),
+    readDetail: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
+function request(requestId: string, requestVersion: number, state: string) {
+  return {
+    requestId, requestVersion, state, actionable: state === 'OPEN', timeZone: 'Asia/Manila',
+    publishedAt: '2027-01-08T01:00:00Z', offerDeadline: '2027-01-08T02:00:00Z',
+    requestedWindow: { startAt: '2027-01-09T01:00:00Z', endAt: '2027-01-09T03:00:00Z' },
+    area: { code: 'BGC', radiusKm: 5 }, headcount: { minimum: 4, maximum: 10 },
+    mustHaves: ['parking'], categoryAttributes: {},
   };
 }
 

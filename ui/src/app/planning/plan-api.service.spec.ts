@@ -122,4 +122,28 @@ describe('PlanApi', () => {
     });
     expect(executeIdempotent).toHaveBeenCalledWith(intent);
   });
+
+  it('reads current, paged, and exact group-private request versions', () => {
+    const read = vi.fn((_path: string, _params?: HttpParams) => of({ body: null }));
+    TestBed.configureTestingModule({ providers: [{ provide: ApiHttpClient, useValue: { read } }] });
+    const api = TestBed.inject(PlanApi);
+
+    api.readCurrentPublishedRequest('plan id').subscribe();
+    api.listPublishedRequestHistory('plan id', 'opaque-cursor').subscribe();
+    api.readPublishedRequest('plan id', 'request id').subscribe();
+
+    expect(read).toHaveBeenNthCalledWith(1, '/plans/plan%20id/published-requests/current');
+    expect(read).toHaveBeenNthCalledWith(
+      2,
+      '/plans/plan%20id/published-requests',
+      expect.any(HttpParams),
+    );
+    const params = read.mock.calls[1][1] as HttpParams;
+    expect(params.get('cursor')).toBe('opaque-cursor');
+    expect(params.get('limit')).toBe('20');
+    expect(read).toHaveBeenNthCalledWith(
+      3,
+      '/plans/plan%20id/published-requests/request%20id',
+    );
+  });
 });

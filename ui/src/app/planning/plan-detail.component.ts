@@ -12,6 +12,7 @@ import {
   PublicationOutcome,
   PublicationResult,
 } from './plan-publication.service';
+import { PlanRequestHistoryService } from './plan-request-history.service';
 import { ActorScopeResetService } from '../identity/actor-scope-reset.service';
 import {
   createRequirementForm,
@@ -44,6 +45,7 @@ export class PlanDetailComponent implements OnDestroy, OnInit {
   readonly preferences = inject(PlanPreferenceService);
   readonly finalizations = inject(PlanFinalizationService);
   readonly publications = inject(PlanPublicationService);
+  readonly requests = inject(PlanRequestHistoryService);
   readonly #scopeReset = inject(ActorScopeResetService);
   readonly #route = inject(ActivatedRoute);
   readonly editForm = createRequirementForm();
@@ -74,7 +76,14 @@ export class PlanDetailComponent implements OnDestroy, OnInit {
         this.preferences.usePlan(planId);
         this.finalizations.usePlan(planId);
         this.publications.usePlan(planId);
+        this.requests.usePlan(planId);
         void this.loadAndHydrate(planId);
+      }
+    });
+    this.#route.queryParamMap.subscribe((params) => {
+      const planId = this.planId();
+      if (planId !== null) {
+        void this.requests.readDetail(planId, params.get('requestId'));
       }
     });
   }
@@ -90,6 +99,7 @@ export class PlanDetailComponent implements OnDestroy, OnInit {
       this.preferences.releasePlan(planId);
       this.finalizations.releasePlan(planId);
       this.publications.releasePlan(planId);
+      this.requests.releasePlan(planId);
     }
   }
 
@@ -394,6 +404,31 @@ export class PlanDetailComponent implements OnDestroy, OnInit {
     });
   }
 
+  loadMoreRequestHistory(): void {
+    const planId = this.planId();
+    if (planId !== null) {
+      void this.requests.loadMore(planId).then(() => this.discardPrivateRequestAccess(planId));
+    }
+  }
+
+  retryRequestHistory(): void {
+    const planId = this.planId();
+    if (planId === null) {
+      return;
+    }
+    if (this.requests.items().length > 0 && this.requests.nextCursor() !== null) {
+      this.loadMoreRequestHistory();
+      return;
+    }
+    void this.requests.refreshHistory(planId).then(() => this.discardPrivateRequestAccess(planId));
+  }
+
+  requestHistoryLabel(requestId: string | undefined): string {
+    return requestId !== undefined && requestId === this.requests.current()?.requestId
+      ? 'Current according to the server'
+      : 'Historical version';
+  }
+
   finalizationViolation(field: string): readonly { field: string; message: string }[] {
     return this.finalizations.violations().filter((violation) => violation.field === field);
   }
@@ -515,13 +550,22 @@ export class PlanDetailComponent implements OnDestroy, OnInit {
         this.preferenceFormReady.set(true);
       }
       await this.finalizations.load(planId);
+      if (!this.isCurrentLoad(loadRequestId, planId, actorGeneration)) {
+        return;
+      }
       if (
         !this.#destroyed
         && this.planId() === planId
         && this.finalizations.historyProblemCode() === 'PRIVATE_RESOURCE_NOT_FOUND'
       ) {
         this.planDetail.discardInaccessiblePlan(planId);
+        return;
       }
+      await this.requests.load(planId);
+      if (!this.isCurrentLoad(loadRequestId, planId, actorGeneration)) {
+        return;
+      }
+      this.discardPrivateRequestAccess(planId);
       const reviewedId = this.publicationReview()?.finalizationId;
       if (
         reviewedId !== undefined
@@ -601,6 +645,14 @@ export class PlanDetailComponent implements OnDestroy, OnInit {
       && loadRequestId === this.#loadRequestId
       && this.planId() === planId
       && actorGeneration === this.#scopeReset.generation();
+  }
+
+  private discardPrivateRequestAccess(planId: string): void {
+    if (
+      this.requests.historyProblemCode() === 'PRIVATE_RESOURCE_NOT_FOUND'
+    ) {
+      this.planDetail.discardInaccessiblePlan(planId);
+    }
   }
 
   private requirementRequest(): ReturnType<typeof createRequirementReplacementRequest> | null {
