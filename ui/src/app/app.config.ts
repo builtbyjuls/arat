@@ -1,6 +1,6 @@
 import { ApplicationConfig, provideBrowserGlobalErrorListeners } from '@angular/core';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
-import { provideRouter } from '@angular/router';
+import { provideRouter, withInMemoryScrolling } from '@angular/router';
 import { routes } from './app.routes';
 import { bearerTokenInterceptor } from './api/bearer-token.interceptor';
 import { BEARER_TOKEN_READER } from './api/bearer-token.interceptor';
@@ -10,7 +10,7 @@ import { LocalActorSession, localActorTokenReader } from './identity/local-actor
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
-    provideRouter(routes),
+    provideRouter(routes, withInMemoryScrolling({ scrollPositionRestoration: 'enabled' })),
     provideHttpClient(withInterceptors([bearerTokenInterceptor, identityInvalidationInterceptor])),
     {
       provide: BEARER_TOKEN_READER,

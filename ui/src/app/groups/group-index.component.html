@@ -1,0 +1,62 @@
+<section aria-labelledby="groups-heading">
+  <div class="heading-row">
+    <div>
+      <h1 id="groups-heading" data-route-heading tabindex="-1">Your groups</h1>
+      <p>Private groups where you are an active member.</p>
+    </div>
+    <button type="button" (click)="refresh()" [disabled]="groupIndex.state() === 'loading' || groupIndex.state() === 'loading-more' || groupIndex.state() === 'refreshing'">
+      Refresh
+    </button>
+  </div>
+
+  @if (groupIndex.state() === 'loading') {
+    <p class="status" role="status">Loading your groups...</p>
+  } @else if (groupIndex.state() === 'error' && groupIndex.groups().length === 0) {
+    <section class="state" aria-live="assertive" role="alert">
+      <h2>Groups are unavailable</h2>
+      <p>Try refreshing. If the problem continues, use the correlation ID when contacting support.</p>
+      @if (groupIndex.correlationId()) {
+        <p>Correlation ID: {{ groupIndex.correlationId() }}</p>
+      }
+    </section>
+  } @else if (groupIndex.state() === 'empty') {
+    <section class="state" aria-live="polite" role="status">
+      <h2>No private groups yet</h2>
+      <p>When you join or create a group, it will appear here.</p>
+    </section>
+  } @else {
+    @if (groupIndex.state() === 'error') {
+      <section class="state" aria-live="assertive" role="alert">
+        <h2>Groups could not be refreshed</h2>
+        <p>Your previously loaded groups are still shown. Try refreshing again.</p>
+        @if (groupIndex.correlationId()) {
+          <p>Correlation ID: {{ groupIndex.correlationId() }}</p>
+        }
+      </section>
+    }
+    <ul class="group-list">
+      @for (group of groupIndex.groups(); track group.groupId) {
+        <li>
+          <a class="group-card" [routerLink]="['/groups', group.groupId]">
+            <span class="group-name">{{ group.name }}</span>
+            <span class="role-label">{{ group.role === 'ORGANIZER' ? 'Organizer' : 'Member' }}</span>
+            @if (group.description) {
+              <span class="group-description">{{ group.description }}</span>
+            }
+          </a>
+        </li>
+      }
+    </ul>
+    @if (groupIndex.state() === 'loading-more') {
+      <p class="status" role="status">Loading more groups...</p>
+    }
+    @if (groupIndex.state() === 'refreshing') {
+      <p class="status" role="status">Refreshing your groups...</p>
+    }
+    @if (groupIndex.nextCursor() !== null) {
+      <button type="button" class="load-more" (click)="loadMore()" [disabled]="groupIndex.state() === 'loading-more'">
+        Load more groups
+      </button>
+    }
+  }
+</section>
