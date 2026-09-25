@@ -1,10 +1,19 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page } from '@playwright/test';
 
-export async function selectActor(page: Page, actor: 'ari' | 'bea'): Promise<void> {
+export type LocalActor = 'ari' | 'bea' | 'cruz' | 'dani' | 'owen';
+
+const actorNames: Record<LocalActor, string> = {
+  ari: 'Ari Organizer',
+  bea: 'Bea Member',
+  cruz: 'Cruz Outsider',
+  dani: 'Dani Provider',
+  owen: 'Owen Operator',
+};
+
+export async function selectActor(page: Page, actor: LocalActor): Promise<void> {
   await page.locator('#local-actor').selectOption(actor);
-  const name = actor === 'ari' ? 'Ari Organizer' : 'Bea Member';
-  await expect(page.getByText(`Local actor verified: ${name}`)).toBeVisible();
+  await expect(page.getByText(`Local actor verified: ${actorNames[actor]}`)).toBeVisible();
 }
 
 export async function visitAsAri(page: Page, path: string): Promise<void> {
@@ -46,11 +55,14 @@ export async function createGroup(page: Page): Promise<BrowserGroup> {
 }
 
 export async function createPlan(page: Page, groupId: string): Promise<void> {
+  const startAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  startAt.setUTCHours(18, 0, 0, 0);
+  const endAt = new Date(startAt.getTime() + 2 * 60 * 60 * 1000);
   await page.goto(`/groups/${groupId}/plans`);
   await expect(page.getByRole('heading', { level: 1, name: 'Plans' })).toBeVisible();
   await page.getByLabel('Plan title').fill('Browser foundation plan');
-  await page.getByLabel('Starts').fill('2030-01-02T18:00');
-  await page.getByLabel('Ends').fill('2030-01-02T20:00');
+  await page.getByLabel('Starts').fill(startAt.toISOString().slice(0, 16));
+  await page.getByLabel('Ends').fill(endAt.toISOString().slice(0, 16));
   await page.getByLabel('Area code').fill('BGC');
   await page.getByRole('button', { name: 'Create plan' }).click();
   await expect(page).toHaveURL(/\/plans\/[0-9a-f-]+$/);
