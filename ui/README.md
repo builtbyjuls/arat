@@ -142,8 +142,10 @@ The frontend CI job runs the same independent commands from `ui/` in this
 order: `npm ci`, `npm run lint`, `npm run test:ci`, and `npm run build`.
 Frontend verification does not invoke Maven.
 
-Coverage thresholds are currently zero because the scaffold has only a smoke
-test. Every feature card must add focused tests with its production code, and
-the thresholds should increase when the application has enough behavior for a
-meaningful baseline. Coverage and build output are local artifacts and must
-remain untracked.
+The Vitest suite contains focused tests for implemented UI1 behavior.
+`npm run test:ci` reports coverage, but no nonzero coverage minimum is
+currently enforced; the four configured thresholds remain zero without
+presenting zero as a quality target. Named behavioral, privacy, conflict, and
+workflow tests are the acceptance evidence, rather than a coverage percentage
+alone. Coverage and build output are local artifacts and must remain
+untracked.
