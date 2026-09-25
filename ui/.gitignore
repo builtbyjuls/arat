@@ -6,4 +6,6 @@
 /dist
 /out-tsc
 /.angular
+/playwright-report
+/test-results
 /src/app/api/generated

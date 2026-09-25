@@ -13,6 +13,8 @@
     "test": "ng test --watch=false",
     "pretest:ci": "npm run generate:api-types",
     "test:ci": "ng test --watch=false --coverage",
+    "test:browser": "playwright test",
+    "test:browser:compose": "../scripts/test-ui-browser.sh",
     "verify:production-local-demo-exclusion": "node scripts/verify-production-local-demo-exclusion.mjs",
     "check": "npm run lint && npm run test:ci && npm run build && npm run verify:production-local-demo-exclusion"
   },
@@ -39,7 +41,9 @@
     "@angular/build": "22.2.0",
     "@angular/cli": "22.2.0",
     "@angular/compiler-cli": "22.2.0",
+    "@axe-core/playwright": "4.13.0",
     "@eslint/js": "10.0.1",
+    "@playwright/test": "1.63.0",
     "@vitest/coverage-v8": "5.0.1",
     "angular-eslint": "22.5.0",
     "eslint": "10.11.0",

@@ -79,6 +79,9 @@ Run these commands from this directory:
   `coverage/`.
 - `npm run build` creates the production build in the ignored `dist/`
   directory.
+- `npm run test:browser:compose` starts an isolated local-demo Compose stack,
+  runs the focused Chromium and accessibility checks, and removes the stack and
+  browser reports afterwards.
 - `npm run check` runs lint, the covered test suite, and the production build.
 
 The frontend CI job runs the same independent commands from `ui/` in this
