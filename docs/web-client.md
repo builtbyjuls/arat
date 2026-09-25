@@ -1,8 +1,7 @@
 # Mobile Web Client Contract
 
-Status: UI1 decisions accepted; supporting discovery reads are implemented and
-the client is in progress.
-M0-M2 backend behavior is implemented. UI1 precedes M3 without renumbering it.
+Status: UI1 implemented. M0-M2 backend behavior and the supporting discovery
+reads are implemented. M3 is next without renumbering it.
 This is a focused demonstration client, not a production-ready identity or
 frontend platform, and it is a responsive web application, not a native app.
 
@@ -50,7 +49,7 @@ M2 has no staff invitation or removal endpoints.
   verification must not run Maven. Backend contract export/drift checks and
   browser stack orchestration are explicit separate verification steps.
 
-Development uses the Angular proxy for `/api` and `/v3`. The planned Compose
+Development uses the Angular proxy for `/api` and `/v3`. The Compose
 web container serves static assets and proxies those paths to Spring on the
 same browser origin, preserving status, ETag, Location, and correlation headers.
 No broad CORS configuration is needed. HTML deep links return the SPA, while
@@ -65,7 +64,7 @@ TLS infrastructure, and a CDN are outside UI1.
 
 ## Browser routes and ownership
 
-These are browser routes, distinct from `/api/v1` resources. All are planned.
+These are implemented browser routes, distinct from `/api/v1` resources.
 Forms and detail sections listed within a workspace need no additional public
 route. Unknown routes have an accessible not-found view.
 
@@ -89,7 +88,7 @@ fresh plan read authorizes the resource. Organizer actions are labeled as such;
 when current scoped role evidence is unavailable, do not invent a role from the
 local persona name. The server still decides attempted commands and returns
 its role failures. Group navigation can return to `/groups` without a guessed
-parent. Provider detail will expose `callerStaffRole` for reload-safe UI hints.
+parent. Provider detail exposes `callerStaffRole` for reload-safe UI hints.
 
 Each list supports bounded cursor paging, loading, empty, error, and explicit
 refresh states. Cursors are opaque and reset on actor or resource-context
@@ -307,9 +306,9 @@ inputs stay untracked and must be handled as sensitive diagnostics.
 
 ## Evidence and exit gate
 
-The [Testing Strategy](testing-strategy.md#ui1-web-client-gates-planned) defines
-the independent frontend lane and browser checks. Before UI1 is called
-implemented, a clean checkout must pass backend PostgreSQL verification,
+The [Testing Strategy](testing-strategy.md#ui1-web-client-gates-implemented) defines
+the independent frontend lane and browser checks. The implemented UI1 baseline
+passes backend PostgreSQL verification,
 OpenAPI drift/type generation, frontend lint/unit/component tests, normal and
 local-demo builds, production fake-token exclusion, isolated same-origin
 Compose smoke, and Playwright/accessibility checks.
@@ -321,5 +320,4 @@ conflict/retry handling, provider verification and recipient privacy, request
 replacement/history/closure/cancellation, and actor-switch isolation. Browser
 tests supplement PostgreSQL invariants; they do not replace them. Automated
 accessibility checks supplement keyboard, focus, zoom, and manual review.
-Until this evidence exists, UI1 remains planned and M3 is the next core backend
-milestone after it.
+This evidence is committed. M3 is the next core backend milestone.

@@ -9,9 +9,8 @@ milestone is called complete.
 Milestone and phase numbers refer to the same delivery sequence. This document
 uses `M0`, `M1`, and so on consistently.
 
-Current stage: M2 is complete. UI1, the mobile web demonstration client, is
-next. M3 remains planned after UI1, with its number and marketplace scope
-unchanged.
+Current stage: UI1 is complete. M3 is next, with its number and marketplace
+scope unchanged.
 
 ## Status vocabulary
 
@@ -32,8 +31,8 @@ documentation agree.
 flowchart LR
     M0[M0 Runtime foundation<br/>Complete] --> M1[M1 Private collaboration<br/>Complete]
     M1 --> M2[M2 Provider requests<br/>Complete]
-    M2 --> UI1[UI1 Mobile web client<br/>Next]
-    UI1 --> M3[M3 Offers and matches<br/>Planned]
+    M2 --> UI1[UI1 Mobile web client<br/>Complete]
+    UI1 --> M3[M3 Offers and matches<br/>Next]
     M3 --> M4[M4 Reliable delivery<br/>Planned]
     M4 --> R[Release evidence and hardening<br/>Planned]
 
@@ -115,12 +114,11 @@ OpenAPI journey, focused rollback and separate-connection race suites, database
 immutability tests, and the normal `./mvnw clean verify` lane. M2 persists
 durable pending outbox rows but does not relay or deliver them.
 
-### UI1: Mobile web client for M0-M2 - Next
+### UI1: Mobile web client for M0-M2 - Complete
 
-The [Mobile Web Client Contract](web-client.md) freezes the planned Angular
-client, routes, HTTP semantics, same-origin boundary, mobile rules, and local
-identity limitations. No client or supporting discovery read is implemented
-by this documentation decision.
+The [Mobile Web Client Contract](web-client.md) documents the implemented
+Angular client, routes, HTTP semantics, same-origin boundary, mobile rules,
+and local identity limitations.
 
 Outcome:
 
@@ -134,14 +132,14 @@ Outcome:
 - The local-only actor selector and same-origin runtime demonstrate M2 without
   claiming production authentication or pulling offers and matches forward.
 
-Completion requires independent backend/frontend gates, generated OpenAPI
-contract checks, mobile Playwright and accessibility evidence at 320/360/390
-CSS pixels, a desktop smoke, reload and actor-isolation tests, production
-fake-token exclusion, and an isolated Compose smoke. Browser tests supplement
-PostgreSQL invariant evidence. UI1 is inserted between M2 and M3 without
-renumbering the existing milestones.
+Completion evidence is committed: independent backend/frontend gates,
+generated OpenAPI contract checks, mobile Playwright and accessibility checks
+at 320/360/390 CSS pixels, a desktop smoke, reload and actor-isolation tests,
+production fake-token exclusion, and an isolated Compose smoke. Browser tests
+supplement PostgreSQL invariant evidence. UI1 is inserted between M2 and M3
+without renumbering the existing milestones.
 
-### M3: Offers, selection, and provider confirmation - Planned
+### M3: Offers, selection, and provider confirmation - Next
 
 Outcome:
 

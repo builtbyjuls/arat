@@ -11,9 +11,9 @@ HTTP journey and OpenAPI contract are covered by `MilestoneOneJourneyIT`.
 M2 now has focused PostgreSQL suites plus `MilestoneTwoJourneyIT` for the full
 HTTP and executable OpenAPI journey. UI1 discovery reads have focused
 PostgreSQL suites plus `UiDiscoveryContractsIT` for their combined HTTP privacy
-and executable OpenAPI boundary. The focused UI1 browser foundation now checks
-the same-origin Compose path; the remaining mobile web client gates remain
-below. M3 adds offers, votes, selection,
+and executable OpenAPI boundary. UI1 browser and accessibility checks cover
+the same-origin Compose path and the mobile M2 journey. M3 adds offers, votes,
+selection,
 confirmation, and matches. M4 adds relay, AWS SDK, SQS/Floci, inbox, SMTP,
 email rendering, delivery retries, and DLQ tests. No M2 test needs those M4
 components.
@@ -114,12 +114,12 @@ The normal `./mvnw clean verify` lane includes the M0-M2 regression coverage.
 M2 proves durable outbox capture only; it makes no offer, relay, queue, email,
 or notification-delivery claim.
 
-## UI1 web client gates (planned)
+## UI1 web client gates (implemented)
 
 The [Mobile Web Client Contract](web-client.md) defines the client decisions.
-UI1 requires the following evidence before its status becomes implemented:
+The following committed checks are the UI1 evidence:
 
-| Lane | Required evidence |
+| Lane | Committed evidence |
 | --- | --- |
 | Backend | Focused PostgreSQL Testcontainers tests for discovery privacy, roles, bounded stable pagination, indexed query plans, finalization basis, and exact pending submissions; normal `./mvnw clean verify` regression lane |
 | Contract | Checked-in executable OpenAPI snapshot, including local identity probe; deterministic untracked TypeScript generation and drift detection against the in-process local-profile contract |
@@ -127,14 +127,22 @@ UI1 requires the following evidence before its status becomes implemented:
 | HTTP | Exact headers, response metadata, first-write/stale ETags, same-intent transport retry, duplicate clicks, key misuse, original replay versus fresh state, safe malformed/unknown Problem Details |
 | Identity/privacy | Probe before rendering, direct reload and server rediscovery, actor-switch and late-response isolation, 401/403/private 404 handling, token-free history/storage, no private provider fields or evidence leakage |
 | Runtime | Isolated same-origin Compose smoke; SPA deep-link fallback, non-SPA missing-asset/API failures, proxy header preservation and token-path log redaction, bounded readiness and resource cleanup |
-| Browser | Playwright mobile Chromium journey at 390 CSS pixels plus restrained desktop smoke; representative shell, list, form, detail, confirmation and error patterns at 320, 360 and 390 with no horizontal page overflow |
-| Accessibility | Axe on representative patterns plus keyboard, labels, field errors, visible focus, navigation/dialog focus restoration, zoom and non-hover manual checks |
+| Browser | Playwright mobile Chromium M2 journey at 390 CSS pixels for provider creation/verification, invitation acceptance, plan creation, preference, finalization, publication, and recipient privacy; responsive shell, form, detail, confirmation-dialog, and error patterns at 320, 360, and 390 plus a restrained desktop smoke |
+| Accessibility | Axe on the checked-in representative browser patterns, plus automated keyboard, labels, field errors, visible focus, and dialog focus-restoration checks |
 
 The browser journey covers organizer/member invitations and collaboration,
 provider creation/submission, operator exact-submission decision, eligible
-recipient privacy, finalization/publication/replacement/history, closure and
-cancellation. It must include stale ETag recovery, deliberate retries, reloads,
-and actor changes. It does not demonstrate M3 offers or M4 delivery.
+recipient privacy, finalization/publication, reloads, and actor changes. Stale
+ETag recovery and deliberate transport retries are covered by focused frontend
+unit/component tests; replacement, request history, closure, and cancellation
+remain covered by backend HTTP and PostgreSQL checks rather than the browser
+journey. UI1 does not demonstrate M3 offers or M4 delivery.
+
+Run the backend lane with `./mvnw clean verify`, the frontend lane with `cd ui
+&& npm ci && npm run check`, and the isolated web smoke with
+`scripts/smoke-ui.sh`. Before the browser lane on a fresh machine, install
+Chromium and its system dependencies with `cd ui && npx playwright install
+--with-deps chromium`; then run `npm run test:browser:compose`.
 
 Maven must not install Node or execute frontend checks; frontend unit/build
 checks must not run Maven. Contract and Compose orchestration are explicit

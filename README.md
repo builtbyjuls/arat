@@ -16,8 +16,7 @@ collaboration, and versioned provider requests with recipient privacy. Offers,
 matches, and notification delivery remain planned, and the documents describe
 the evidence required before making performance or scalability claims.
 
-Current stage: M2 is complete. UI1, the planned mobile-first Angular web
-client for M0-M2, is next. M3 remains planned after UI1 and retains offers,
+Current stage: UI1 is complete. M3 is next and retains offers,
 votes, selection, provider confirmation, and matches. M2 finalizes
 organizer-selected terms, publishes immutable requests to fixed verified-provider
 audiences, authorizes reads, and captures durable notification intent in
@@ -223,7 +222,7 @@ directly because its transaction and locking behavior is part of the product.
 | Database schema and migrations | Implemented: Flyway baseline and PostgreSQL test foundation |
 | Planning workflow | Implemented: private groups, invitations, collaborative plans, requirement replacement, member preferences, and cancellation |
 | Marketplace workflows | Implemented through M2 provider request publication, versioning, recipient privacy, closure, and cancellation |
-| Mobile web client | UI1 planned next: Angular demonstration client; discovery reads and screens not implemented |
+| Mobile web client | Implemented: responsive Angular demonstration client for the M0-M2 journey, with reload-safe discovery, local-demo identity, browser checks, and a same-origin Compose path |
 | Billing simulation | Not started |
 | Concurrency evidence | Implemented for M1 collaboration and M2 publication, replacement, closure, cancellation, and eligibility fencing |
 | Performance measurements | Not started |
@@ -233,10 +232,11 @@ run.
 
 ## Runnable local workflow
 
-Prerequisites are Java 21, Bash, Docker with Docker Compose v2, `curl`,
-`unzip`, `jq`, and a SHA-256 utility such as `sha256sum` or `shasum`. The
-wrapper is the normal build entry point. No AWS account, cloud credentials,
-Floci, Mailpit, or paid service is needed for M0 and M1.
+Prerequisites are Java 21, Node `>=24.15.0 <25.0.0`, npm, Bash, Docker with
+Docker Compose v2, `curl`, `unzip`, `jq`, and a SHA-256 utility such as
+`sha256sum` or `shasum`. The wrapper is the normal backend build entry point.
+No AWS account, cloud credentials, Floci, Mailpit, or paid service is needed
+for the implemented M0-M2 and UI1 workflows.
 
 ### Test lanes
 
@@ -283,6 +283,27 @@ accounts. Use `arat-local-operator-token` to select the local platform operator
 for administrative scenarios. The tokens and probe are unavailable outside the `local` profile. The `prod`
 profile cannot be combined with `local` or `compose`. Stop the host application
 with `Ctrl+C`, then stop the database with `docker compose stop postgres`.
+
+### Angular development server
+
+In a separate terminal, install and run the independent Angular workspace:
+
+~~~bash
+cd ui
+npm ci
+npm run generate:api-types
+npm run ng -- serve --configuration local-demo
+~~~
+
+Open `http://localhost:4200`. The development proxy forwards `/api` and `/v3`
+to the host-run Spring application at `http://localhost:8080`; it is not used
+by production builds. `local-demo` is required for the local actor selector;
+the normal development configuration intentionally has no fake identity. Run
+`npm run check` for lint, Vitest, the production build, and the production
+fake-local-actor exclusion check. Run
+`npm run build:local-demo` when a local-demo build is needed outside Compose.
+See the [web client README](ui/README.md) for browser checks and the exact
+local demonstration sequence.
 
 ### Milestone 1 collaboration journey
 

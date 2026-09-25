@@ -807,6 +807,10 @@ implemented:
 
 - `GET /api/v1/operations/providers/pending-verifications`: operator-only exact
   current submissions with bounded provider summary and evidence references.
+- `GET /api/v1/groups`: active membership-scoped group summaries only.
+- `GET /api/v1/providers`: active staff-scoped provider summaries only.
+- `GET /api/v1/plans/{planId}/requirement-finalizations`: active-member
+  finalization history with its current-basis marker only.
 
 The discovery reads use bounded opaque cursor pages (default 20, maximum 100),
 stable creation or submission time plus ID ordering, and authorization before
